@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Provisioning Flowchart</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .form-container {
+            border: 2px dotted #000;
+            border-radius: 15px;
+            padding: 20px;
+            background: linear-gradient(180deg, #f9f9f9, #e0e0e0);
+            transition: background 0.5s;
+        }
+        .form-container:hover {
+            background: linear-gradient(180deg, #e0e0e0, #f9f9f9);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        select, input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #28a745;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .flowchart {
+            margin-top: 20px;
+        }
+        .device-card {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px;
+            display: inline-block;
+            width: 30%;
+            box-sizing: border-box;
+            transition: transform 0.2s;
+        }
+        .device-card:hover {
+            transform: scale(1.05);
+        }
+        .device-card h3 {
+            margin-top: 0;
+        }
+        .alert {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+    <script>
+        function checkStandards() {
+            const cpuSpeed = document.getElementById('cpu_speed').value;
+            const ram = document.getElementById('ram').value;
+            const storage = document.getElementById('storage').value;
+            const screenSize = document.getElementById('screen_size').value;
+
+            const minCpuSpeed = 2.0;
+            const minRam = 4;
+            const minStorage = 64;
+            const minScreenSize = 10;
+
+            let alertMessage = '';
+            if (cpuSpeed < minCpuSpeed) alertMessage += 'CPU Speed below recommended standards.\n';
+            if (ram < minRam) alertMessage += 'RAM below recommended standards.\n';
+            if (storage < minStorage) alertMessage += 'Storage below recommended standards.\n';
+            if (screenSize < minScreenSize) alertMessage += 'Screen Size below recommended standards.\n';
+
+            if (alertMessage) alert(alertMessage);
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Device Provisioning Flowchart</h1>
+        <button onclick="document.getElementById('device-form').style.display='block'">Open Form</button>
+        <div id="device-form" class="form-container" style="display:none;">
+            <form action="/" method="POST" onsubmit="checkStandards()">
+                <div class="form-group">
+                    <label for="use">Use:</label>
+                    <select id="use" name="use">
+                        <option value="Personal">Personal</option>
+                        <option value="Work">Work</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="device_type">Device Type:</label>
+                    <select id="device_type" name="device_type">
+                        <option value="PCs">PCs</option>
+                        <option value="Laptops">Laptops</option>
+                        <option value="Tablets">Tablets</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="price_range">Price Range:</label>
+                    <input type="range" id="price_range" name="price_range" min="100" max="3000" step="50" oninput="this.nextElementSibling.value = this.value">
+                    <output>100</output>
+                </div>
+                <div class="form-group">
+                    <label for="cpu_speed">CPU Speed (GHz):</label>
+                    <input type="range" id="cpu_speed" name="cpu_speed" min="1" max="5" step="0.1" oninput="this.nextElementSibling.value = this.value">
+                    <output>2.0</output>
+                </div>
+                <div class="form-group">
+                    <label for="ram">RAM (GB):</label>
+                    <input type="range" id="ram" name="ram" min="2" max="32" step="1" oninput="this.nextElementSibling.value = this.value">
+                    <output>4</output>
+                </div>
+                <div class="form-group">
+                    <label for="storage">Storage (GB):</label>
+                    <input type="range" id="storage" name="storage" min="32" max="2000" step="32" oninput="this.nextElementSibling.value = this.value">
+                    <output>64</output>
+                </div>
+                <div class="form-group">
+                    <label for="screen_size">Screen Size (inches):</label>
+                    <input type="range" id="screen_size" name="screen_size" min="8" max="30" step="1" oninput="this.nextElementSibling.value = this.value">
+                    <output>10</output>
+                </div>
+                <button type="submit">Show Results</button>
+            </form>
+        </div>
+        <div class="flowchart">
+            {% if devices %}
+                <h2>Recommended Devices:</h2>
+                <div class="device-container">
+                    {% for device in devices %}
+                        <div class="device-card">
+                            <h3>{{ device[1] }}</h3>
+                            <p>Category: {{ device[2] }}</p>
+                            <p>CPU Speed: {{ device[3] }} GHz</p>
+                            <p>RAM: {{ device[4] }} GB</p>
+                            <p>Storage: {{ device[5] }} GB</p>
+                            <p>Screen Size: {{ device[6] }} inches</p>
+                            <p>Price: ${{ device[7] }}</p>
+                            <button>Select Device</button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
