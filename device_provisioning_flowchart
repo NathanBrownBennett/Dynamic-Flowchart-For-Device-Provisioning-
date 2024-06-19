@@ -1,0 +1,16 @@
+// Device Provisioning Dynamic Flowchart
+digraph {
+	A [label="Are you purchasing for personal or for work use?"]
+	B [label="Personal Use"]
+	C [label="Work Use"]
+	A -> B [label=Personal]
+	A -> C [label=Work]
+	D [label="Are you looking to offer Personal Computers, Laptops or Tablets for your employees?"]
+	C -> D
+	E [label="Personal Computers"]
+	F [label=Laptops]
+	G [label=Tablets]
+	D -> E [label=PCs]
+	D -> F [label=Laptops]
+	D -> G [label=Tablets]
+}
