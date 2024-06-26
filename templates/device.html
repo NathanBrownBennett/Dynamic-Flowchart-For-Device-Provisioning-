@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Details</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .dark-mode {
+            background-color: rgba(0,0,0,.4);
+            color: white;
+        }
+        .light-mode {
+            background-color: rgba(255,255,255,.4);
+            color: black;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .device-card {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px auto; /* Center the card */
+            display: block; /* Change to block to fill container width */
+            width: 60%; /* Adjust width for device details */
+            box-sizing: border-box;
+            transition: transform 0.2s;
+        }
+        .device-card:hover {
+            transform: scale(1.05);
+        }
+        .device-card h3 {
+            margin-top: 0;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #28a745;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body class="light-mode">
+<div class="container">
+    <div class="device-card">
+        <h3>Device Name: {{ device.name }}</h3>
+        <p>Category: {{ device.category }}</p>
+        <p>CPU Speed: {{ device.cpu_speed }} GHz</p>
+        <p>RAM: {{ device.ram }} GB</p>
+        <p>Storage: {{ device.storage }} GB</p>
+        <p>Screen Size: {{ device.screen_size }} inches</p>
+        <p>Price: £{{ device.price }}</p>
+        <button onclick="window.history.back()">Go Back</button>
+    </div>
+</div>
+</body>
+</html>

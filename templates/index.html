@@ -7,7 +7,17 @@
     <style>
         body {
             font-family: Arial, sans-serif;
+            transition: background-color 0.3s, color 0.3s;
         }
+        .dark-mode {
+            background-color: rgba(0,0,0,.4);
+            color: white;
+          }
+        .light-mode {
+            background-color: rgba(255,255,255,.4);
+            color: black;
+          }
+
         .container {
             width: 80%;
             margin: auto;
@@ -15,15 +25,18 @@
             text-align: center;
         }
         .form-container {
+            display: none;
             border: 2px dotted #000;
             border-radius: 15px;
             padding: 20px;
-            background: linear-gradient(180deg, #f9f9f9, #e0e0e0);
-            transition: background 0.5s;
+            background-color: rgba(252,220,148,.4);
+            transition: background 3s;
         }
         .form-container:hover {
-            background: linear-gradient(180deg, #e0e0e0, #f9f9f9);
+            background-color: rgba(239,156,102,.4);
+            transition: background 3s;
         }
+        
         .form-group {
             margin-bottom: 15px;
         }
@@ -69,6 +82,25 @@
             color: red;
             font-weight: bold;
         }
+        .toggle-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .toggle-label {
+            margin-right: 10px;
+        }
+        .toggle-checkbox {
+            display: none;
+        }
+        .toggle-label::before {
+            content: '☀️';
+        }
+        .toggle-checkbox:checked + .toggle-label::before {
+            content: '🌙';
+        }
+
     </style>
     <script>
         function checkStandards() {
@@ -90,76 +122,154 @@
 
             if (alertMessage) alert(alertMessage);
         }
+
+        function submitForm(event) {
+            event.preventDefault(); // Prevent default form submission
+            const formData = new FormData(document.querySelector('form'));
+            fetch('/', {
+                method: 'POST',
+                body: formData,
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Assuming `data` contains the list of devices
+                
+                // Create device cards here
+                console.log(data);
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function switchTheme() {
+            const body = document.querySelector('body');
+            body.classList.toggle('dark-mode');
+            body.classList.toggle('light-mode');
+        }
+        
+        const toggleSwitch = document.querySelector('.toggle-checkbox');
+        toggleSwitch.addEventListener('change', switchTheme);
     </script>
 </head>
-<body>
+<body class="light-mode">
+    <div class="toggle-container">
+        <label for="toggle" class="toggle-label">Dark Mode</label>
+        <input type="checkbox" id="toggle" class="toggle-checkbox">
+        <label for="toggle" class="toggle-label"></label>
+    </div>
     <div class="container">
-        <h1>Device Provisioning Flowchart</h1>
-        <button onclick="document.getElementById('device-form').style.display='block'">Open Form</button>
-        <div id="device-form" class="form-container" style="display:none;">
+        <h1><ul>Device Provisioning Flowchart</ul></h1>
+        <button id='openbutton' onclick="document.getElementById('device-form').style.display='block'">Open Form</button>
+        <div id="device-form" class="form-container">
             <form action="/" method="POST" onsubmit="checkStandards()">
-                <div class="form-group">
-                    <label for="use">Use:</label>
-                    <select id="use" name="use">
-                        <option value="Personal">Personal</option>
-                        <option value="Work">Work</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="device_type">Device Type:</label>
-                    <select id="device_type" name="device_type">
-                        <option value="PCs">PCs</option>
-                        <option value="Laptops">Laptops</option>
-                        <option value="Tablets">Tablets</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="price_range">Price Range:</label>
-                    <input type="range" id="price_range" name="price_range" min="100" max="3000" step="50" oninput="this.nextElementSibling.value = this.value">
-                    <output>100</output>
-                </div>
-                <div class="form-group">
-                    <label for="cpu_speed">CPU Speed (GHz):</label>
-                    <input type="range" id="cpu_speed" name="cpu_speed" min="1" max="5" step="0.1" oninput="this.nextElementSibling.value = this.value">
-                    <output>2.0</output>
-                </div>
-                <div class="form-group">
-                    <label for="ram">RAM (GB):</label>
-                    <input type="range" id="ram" name="ram" min="2" max="32" step="1" oninput="this.nextElementSibling.value = this.value">
-                    <output>4</output>
-                </div>
-                <div class="form-group">
-                    <label for="storage">Storage (GB):</label>
-                    <input type="range" id="storage" name="storage" min="32" max="2000" step="32" oninput="this.nextElementSibling.value = this.value">
-                    <output>64</output>
-                </div>
-                <div class="form-group">
-                    <label for="screen_size">Screen Size (inches):</label>
-                    <input type="range" id="screen_size" name="screen_size" min="8" max="30" step="1" oninput="this.nextElementSibling.value = this.value">
-                    <output>10</output>
-                </div>
-                <button type="submit">Show Results</button>
-            </form>
-        </div>
+                <div class="container">
+                    <!-- Search Bar -->
+                    <div class="form-group">
+                    <label for="searchBar">Search for a device:</label>
+                    <input type="text" id="searchBar" name="searchBar" placeholder="Search devices..." oninput="saveName(this.value)">
+                    <script>
+                        let searchBar = '';
+                        function saveName(value) {
+                            searchBar = value;
+                            console.log("Search Query:", searchBar); // For demonstration, logs the search query to the console
+                        }
+                    </script>
+                    </div>
+                    <div class="form-group">
+                        <label for="use">Use:</label>
+                        <select id="use" name="use">
+                            <option value="Personal">Personal</option>
+                            <option value="Work">Work</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="device_type">Device Type:</label>
+                        <select id="device_type" name="device_type">
+                            <option value="PCs">PCs</option>
+                            <option value="Laptops">Laptops</option>
+                            <option value="Tablets">Tablets</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="price_range">Price Range (£):</label>
+                        <input type="range" id="price_range_min" name="price_range_min" min="0" max="2000" value="100" oninput="updatePriceRangeValue()">
+                        <input type="range" id="price_range_max" name="price_range_max" min="0" max="2000" value="1500" oninput="updatePriceRangeValue()">
+                        <p>Min: £<span id="price_range_min_value">100</span> - Max: £<span id="price_range_max_value">1500</span></p>
+                        <input type="hidden" id="price_range" name="price_range">
+                    </div>
+                    <script>
+                        function updatePriceRangeValue() {
+                            const minPrice = document.getElementById('price_range_min').value;
+                            const maxPrice = document.getElementById('price_range_max').value;
+                            document.getElementById('price_range_min_value').textContent = minPrice;
+                            document.getElementById('price_range_max_value').textContent = maxPrice;
+                            // Combine min and max price into a single hidden input for submission
+                            document.getElementById('price_range').value = minPrice + "," + maxPrice;
+                        }
+                        // Initialize the displayed price range values on page load
+                        updatePriceRangeValue();
+                    </script>
+                    </div>
+                    <div class="form-group">
+                        <label for="cpu_speed">CPU Speed (GHz):</label>
+                        <input type="range" id="cpu_speed" name="cpu_speed" min="1" max="5" step="0.1" oninput="this.nextElementSibling.value = this.value">
+                        <output>2.0ghz</output>
+                    </div>
+                    <div class="form-group">
+                        <label for="ram">RAM (GB):</label>
+                        <input type="range" id="ram" name="ram" min="2" max="32" step="1" oninput="this.nextElementSibling.value = this.value">
+                        <output>4gb</output>
+                    </div>
+                    <div class="form-group">
+                        <label for="storage">Storage (GB):</label>
+                        <input type="range" id="storage" name="storage" min="32" max="2000" step="32" oninput="this.nextElementSibling.value = this.value">
+                        <output>64</output>
+                    </div>
+                    <div class="form-group">
+                        <label for="screen_size">Screen Size (inches):</label>
+                        <input type="range" id="screen_size" name="screen_size" min="8" max="30" step="1" oninput="this.nextElementSibling.value = this.value">
+                        <output>10</output>
+                    </div>
+                    <div>
+                    <button id='closebutton' onclick="document.getElementById('device-form').style.display='none'">Close Form</button>
+                    </div>
+                    <button type="submit">Show Results</button>
+                </form>
+            </div>
         <div class="flowchart">
             {% if devices %}
                 <h2>Recommended Devices:</h2>
                 <div class="device-container">
                     {% for device in devices %}
                         <div class="device-card">
-                            <h3>{{ device[1] }}</h3>
-                            <p>Category: {{ device[2] }}</p>
-                            <p>CPU Speed: {{ device[3] }} GHz</p>
-                            <p>RAM: {{ device[4] }} GB</p>
-                            <p>Storage: {{ device[5] }} GB</p>
-                            <p>Screen Size: {{ device[6] }} inches</p>
-                            <p>Price: ${{ device[7] }}</p>
+                            <h3><ul>Device Name: {{ device[0] }}</ul></h3>
+                            <p>Device Name: {{ device[0] }}</p>
+                            <p>Category: {{ device[1] }}</p>
+                            <p>CPU Speed: {{ device[2] }} GHz</p>
+                            <p>RAM: {{ device[3] }} GB</p>
+                            <p>Storage: {{ device[4] }} GB</p>
+                            <p>Screen Size: {{ device[5] }} inches</p>
+                            <p>Price: £{{ device[6] }}</p>
                             <button>Select Device</button>
                         </div>
                     {% endfor %}
                 </div>
             {% endif %}
-        </div>
+        </div>  
     </div>
+<div class="device-card">
+    {% for device in devices %}
+    <div class="device-card" onclick="window.location.href='/device/{{ device.id }}'">
+    <h3>{{ device.name }}</h3>
+    <p>Category: {{ device.category }}</p>
+    <p>Price: £{{ device.price }}</p>
+    <p>CPU Speed: {{ device.cpu_speed }} GHz</p>
+    <p>RAM: {{ device.ram }} GB</p>
+    <p>Storage: {{ device.storage }} GB</p>
+    <p>Screen Size: {{ device.screen_size }} inches</p>
+    <p>Price: £{{ device.price }}</p>
+    <button>Select Device</button>
+</div>
+{% endfor %}
+</div>
 </body>
 </html>
