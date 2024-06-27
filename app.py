@@ -92,6 +92,8 @@ def create_flowchart(devices, personal_use=False):
         dot.node('I', 'Consider Cloud Monitoring Tools')
         dot.node('J', 'Consider Backup Solutions')
         dot.node('K', 'Consider Remote Updates and Checkups')
+        dot.node('L', 'Ensure DDR5 RAM and MDM Solutions')
+        dot.node('M', 'Follow OS Hardening and Update Protocols')
         
         dot.edge('E', 'H')
         dot.edge('F', 'H')
@@ -102,16 +104,52 @@ def create_flowchart(devices, personal_use=False):
     
     return dot
 
+@app.route("/resources")
+def resources():
+    # Example response with links to educational content
+    return jsonify({
+        "cybersecurity": "https://www.example.com/cybersecurity-basics",
+        "device_security": "https://www.example.com/device-security-best-practices"
+    })
+    
+@app.route("/submit_feedback", methods=["POST"])
+def submit_feedback():
+    # Example implementation for feedback submission
+    feedback = request.form.get("feedback")
+    # Process and store feedback
+    return jsonify({"status": "success", "message": "Thank you for your feedback!"})
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    if request.method == "POST":
-        try:
+    form_submitted = False
+    error_occurred = False
+    usage = ''
+    devices = filter_devices()
+    all_devices = [
+            {"id": device[0], "name": device[1], "category": device[2], "cpu_speed": device[3], 
+             "ram": device[4], "storage": device[5], "screen_size": device[6], "price": device[7]}
+            for device in devices
+        ]
+    recommended_devices = []
+    for device in all_devices:
+        recommended_devices.append({
+            'id': device['id'],
+            'name': device['name'], 
+            'category': device['category'], 
+            'cpu_speed': device['cpu_speed'], 
+            'ram': device['ram'], 
+            'storage': device['storage'], 
+            'screen_size': device['screen_size'], 
+            'price': device['price']
+    })
+    try:
+        if request.method == "POST":
+            form_submitted = True
+            usage = request.form.get("use")
             category = request.form.get("device_type")
             price_range = request.form.get("price_range")
             if price_range:
                 price_range = [int(x) for x in price_range.split(",")]
-
             searchBar = str(request.form.get("searchBar"))
             specs = {
                 'cpu_speed': float(request.form.get("cpu_speed", minimum_requirements['cpu_speed'])),
@@ -120,17 +158,18 @@ def index():
                 'screen_size': float(request.form.get("screen_size", minimum_requirements['screen_size']))
             }
             devices = filter_devices(searchBar=searchBar, category=category, price_range=price_range, specs=specs)
-            devices_json = [{"id": device[0], "name": device[1]} for device in devices]  # Simplified example
-            return jsonify(devices_json)
-        except Exception as e:
-            print("Error:", e)
-            return jsonify({"error": str(e)}), 400
-    else:
-        devices = filter_devices()
-        personal_use = request.args.get("personal_use", "false").lower() in ["true", "1", "t"]
-        flowchart = create_flowchart(devices, personal_use=personal_use)
-        return render_template("index.html", personal_use=personal_use, devices=devices)
-    return render_template("index.html")
+            return render_template("index.html", personal_use=usage, devices=devices, form_submitted=form_submitted, error_occurred=error_occurred, recommended_devices=recommended_devices)
+        else:
+            devices = filter_devices()
+    except Exception as e:
+        print("Error:", e)
+        error_occurred = True
+        recommended_devices = []
+        return render_template("index.html", recommended_devices=recommended_devices)
+
+    personal_use = request.args.get("personal_use", "false").lower() in ["true", "1", "t"]
+    flowchart = create_flowchart(devices, personal_use=usage)
+    return render_template("index.html", recommended_devices=recommended_devices)
 
 @app.route("/device/<int:device_id>")
 def device(device_id):
@@ -141,5 +180,11 @@ def device(device_id):
     conn.close()
     return render_template("device.html", device=device)
 
+@app.route("/flowchart")
+def flowchart():
+    devices = filter_devices()
+    dot = create_flowchart(devices)
+    return dot._repr_svg_()
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=8000)

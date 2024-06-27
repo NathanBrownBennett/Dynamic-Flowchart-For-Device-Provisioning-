@@ -5,12 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Device Provisioning Flowchart</title>
     <style>
+        .Advanced-filters {
+            display: none;
+        }
+        .device-carousel {
+            display: flex;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            white-space: nowrap;
+        }
+        .recommended-device-containers{
+            display: 'block';
+        }
+        .device-card {
+            text-align: center;
+            position: relative;
+            display: inline-block;
+            width: auto;
+            white-space: normal;
+            margin: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        .device-info {
+            display: none;
+            position: absolute;
+            background-color: rgba(0,0,0,0.7);
+            color: white;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 10px;
+        }
+        .device-card:hover .device-info {
+            display: block;
+        }
         body {
             font-family: Arial, sans-serif;
             transition: background-color 0.3s, color 0.3s;
         }
         .dark-mode {
-            background-color: rgba(0,0,0,.4);
+            background-color: black;
             color: white;
           }
         .light-mode {
@@ -59,9 +97,6 @@
         button:hover {
             background-color: #218838;
         }
-        .flowchart {
-            margin-top: 20px;
-        }
         .device-card {
             border: 1px solid #ddd;
             border-radius: 5px;
@@ -100,7 +135,56 @@
         .toggle-checkbox:checked + .toggle-label::before {
             content: '🌙';
         }
-
+        .form-results {
+            width: 80%;
+            margin: auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .security-recommendations {
+            width: 80%;
+            margin: auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .educational-resources {
+            width: 80%;
+            margin: auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .interactive-tutorials {
+            width: 80%;
+            margin: auto;
+            padding: 20px;
+            text-align: center;
+        }
+        @media only screen and (max-width: 768px) {
+            .device-card {
+                width: 100%;
+            }
+            .reccomended-device-containers {
+                display: block;
+            }
+            .form-container {
+                width: 100%;
+            }
+            .container {
+                width: 100%;
+            }
+            .form-results {
+                width: 100%;
+            }
+            .security-recommendations {
+                width: 100%;
+            }
+            .educational-resources {
+                width: 100%;
+            }
+            .interactive-tutorials {
+                width: 100%;
+            }
+        }
     </style>
     <script>
         function checkStandards() {
@@ -122,32 +206,6 @@
 
             if (alertMessage) alert(alertMessage);
         }
-
-        function submitForm(event) {
-            event.preventDefault(); // Prevent default form submission
-            const formData = new FormData(document.querySelector('form'));
-            fetch('/', {
-                method: 'POST',
-                body: formData,
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Assuming `data` contains the list of devices
-                
-                // Create device cards here
-                console.log(data);
-            })
-            .catch(error => console.error('Error:', error));
-        }
-
-        function switchTheme() {
-            const body = document.querySelector('body');
-            body.classList.toggle('dark-mode');
-            body.classList.toggle('light-mode');
-        }
-        
-        const toggleSwitch = document.querySelector('.toggle-checkbox');
-        toggleSwitch.addEventListener('change', switchTheme);
     </script>
 </head>
 <body class="light-mode">
@@ -164,36 +222,21 @@
                 <div class="container">
                     <!-- Search Bar -->
                     <div class="form-group">
-                    <label for="searchBar">Search for a device:</label>
-                    <input type="text" id="searchBar" name="searchBar" placeholder="Search devices..." oninput="saveName(this.value)">
-                    <script>
-                        let searchBar = '';
-                        function saveName(value) {
-                            searchBar = value;
-                            console.log("Search Query:", searchBar); // For demonstration, logs the search query to the console
-                        }
-                    </script>
-                    </div>
-                    <div class="form-group">
-                        <label for="use">Use:</label>
-                        <select id="use" name="use">
-                            <option value="Personal">Personal</option>
-                            <option value="Work">Work</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="device_type">Device Type:</label>
-                        <select id="device_type" name="device_type">
-                            <option value="PCs">PCs</option>
-                            <option value="Laptops">Laptops</option>
-                            <option value="Tablets">Tablets</option>
-                        </select>
+                        <label for="searchBar">Search for a device:</label>
+                        <input type="text" id="searchBar" name="searchBar" placeholder="Search devices..." oninput="saveName(this.value)">
+                        <script>
+                            let searchBar = '';
+                            function saveName(value) {
+                                searchBar = value;
+                                console.log("Search Query:", searchBar); // For demonstration, logs the search query to the console
+                            }
+                        </script>
                     </div>
                     <div class="form-group">
                         <label for="price_range">Price Range (£):</label>
-                        <input type="range" id="price_range_min" name="price_range_min" min="0" max="2000" value="100" oninput="updatePriceRangeValue()">
-                        <input type="range" id="price_range_max" name="price_range_max" min="0" max="2000" value="1500" oninput="updatePriceRangeValue()">
-                        <p>Min: £<span id="price_range_min_value">100</span> - Max: £<span id="price_range_max_value">1500</span></p>
+                        <input type="range" id="price_range_min" name="price_range_min" min="0" max="3000" value="50" oninput="updatePriceRangeValue()">
+                        <input type="range" id="price_range_max" name="price_range_max" min="0" max="3000" value="1500" oninput="updatePriceRangeValue()">
+                        <p>Min: £<span id="price_range_min_value">£100</span> - Max: £<span id="price_range_max_value">£1500</span></p>
                         <input type="hidden" id="price_range" name="price_range">
                     </div>
                     <script>
@@ -202,74 +245,196 @@
                             const maxPrice = document.getElementById('price_range_max').value;
                             document.getElementById('price_range_min_value').textContent = minPrice;
                             document.getElementById('price_range_max_value').textContent = maxPrice;
-                            // Combine min and max price into a single hidden input for submission
                             document.getElementById('price_range').value = minPrice + "," + maxPrice;
                         }
-                        // Initialize the displayed price range values on page load
                         updatePriceRangeValue();
                     </script>
+                    <button onclick="document.getElementsByClassName('Advanced-filters')[0].style.display='block'">Advanced Filters</button>
+                        <div class="Advanced-filters">
+                            <div class="Advanced-filters">
+                                <label for="use">Use:</label>
+                                <select id="use" name="use">
+                                    <option value="Personal">Personal</option>
+                                    <option value="Work">Work</option>
+                                </select>
+                            </div>
+                            <div class="Advanced-filters">
+                                <label for="device_type">Device Type:</label>
+                                <select id="device_type" name="device_type">
+                                    <option value="PCs">PCs</option>
+                                    <option value="Laptops">Laptops</option>
+                                    <option value="Tablets">Tablets</option>
+                                </select>
+                            </div>
+                            <div class="Advanced-filters">
+                                <label for="cpu_speed">Minimum CPU Speed (GHz):</label>
+                                <input type="range" id="cpu_speed" name="cpu_speed" min="1" max="5" step="0.1" oninput="this.nextElementSibling.value = this.value">
+                                <output>2.0ghz</output>
+                            </div>
+                            <div class="Advanced-filters">
+                                <label for="ram">Minimum RAM (GB):</label>
+                                <input type="range" id="ram" name="ram" min="4" max="64" step="4" oninput="this.nextElementSibling.value = this.value">
+                                <output>4gb</output>
+                            </div>
+                            <div class="Advanced-filters">
+                                <label for="storage">Minimum Storage Capacity (GB):</label>
+                                <input type="range" id="storage" name="storage" min="64" max="2000" step="32" oninput="this.nextElementSibling.value = this.value">
+                                <output>64</output>
+                            </div>
+                            <div class="Advanced-filters">
+                                <label for="screen_size">Minimum Screen Size (inches):</label>
+                                <input type="range" id="screen_size" name="screen_size" min="7" max="30" step="1" oninput="this.nextElementSibling.value = this.value">
+                                <output>10</output>
+                            </div>
+                        </div>
+                        <div>
+                            <button id='closebutton' onclick="document.getElementById('device-form').style.display='none'">Close Form</button>
+                        </div>
+                        <button type="submit">Show Results</button>
                     </div>
-                    <div class="form-group">
-                        <label for="cpu_speed">CPU Speed (GHz):</label>
-                        <input type="range" id="cpu_speed" name="cpu_speed" min="1" max="5" step="0.1" oninput="this.nextElementSibling.value = this.value">
-                        <output>2.0ghz</output>
-                    </div>
-                    <div class="form-group">
-                        <label for="ram">RAM (GB):</label>
-                        <input type="range" id="ram" name="ram" min="2" max="32" step="1" oninput="this.nextElementSibling.value = this.value">
-                        <output>4gb</output>
-                    </div>
-                    <div class="form-group">
-                        <label for="storage">Storage (GB):</label>
-                        <input type="range" id="storage" name="storage" min="32" max="2000" step="32" oninput="this.nextElementSibling.value = this.value">
-                        <output>64</output>
-                    </div>
-                    <div class="form-group">
-                        <label for="screen_size">Screen Size (inches):</label>
-                        <input type="range" id="screen_size" name="screen_size" min="8" max="30" step="1" oninput="this.nextElementSibling.value = this.value">
-                        <output>10</output>
-                    </div>
-                    <div>
-                    <button id='closebutton' onclick="document.getElementById('device-form').style.display='none'">Close Form</button>
-                    </div>
-                    <button type="submit">Show Results</button>
                 </form>
             </div>
-        <div class="flowchart">
-            {% if devices %}
-                <h2>Recommended Devices:</h2>
-                <div class="device-container">
-                    {% for device in devices %}
-                        <div class="device-card">
-                            <h3><ul>Device Name: {{ device[0] }}</ul></h3>
-                            <p>Device Name: {{ device[0] }}</p>
-                            <p>Category: {{ device[1] }}</p>
-                            <p>CPU Speed: {{ device[2] }} GHz</p>
-                            <p>RAM: {{ device[3] }} GB</p>
-                            <p>Storage: {{ device[4] }} GB</p>
-                            <p>Screen Size: {{ device[5] }} inches</p>
-                            <p>Price: £{{ device[6] }}</p>
-                            <button>Select Device</button>
+        </div>
+    </div>
+    <h2>Recommended Devices</h2>
+            <div class="device-carousel">
+                <div class="recommended-device-containers">
+                    {% for device in recommended_devices %}
+                        <div class="device-card" onclick="{{ url_for('device', device_id=device.id) }}'">
+                                <h3><ul>Device Name: {{ device.name }}</ul></h3>
+                                <p>Device Name: {{ device.name }}</p>
+                                <p>Category: {{ device.category }}</p>
+                                <p>CPU Speed: {{ device.cpu_speed }} GHz</p>
+                                <p>RAM: {{ device.ram }} GB</p>
+                                <p>Storage: {{ device.storage }} GB</p>
+                                <p>Screen Size: {{ device.screen_size }} inches</p>
+                                <p>Price: £{{ device.price }}</p>
+                                <button>Select Device</button>
                         </div>
                     {% endfor %}
                 </div>
-            {% endif %}
+            </div>
         </div>  
     </div>
-<div class="device-card">
-    {% for device in devices %}
-    <div class="device-card" onclick="window.location.href='/device/{{ device.id }}'">
-    <h3>{{ device.name }}</h3>
-    <p>Category: {{ device.category }}</p>
-    <p>Price: £{{ device.price }}</p>
-    <p>CPU Speed: {{ device.cpu_speed }} GHz</p>
-    <p>RAM: {{ device.ram }} GB</p>
-    <p>Storage: {{ device.storage }} GB</p>
-    <p>Screen Size: {{ device.screen_size }} inches</p>
-    <p>Price: £{{ device.price }}</p>
-    <button>Select Device</button>
+<div class="form-results">
+    <h2>Form Results</h2>
+    {% if error_occurred %}
+    <p>There has been an error retrieving results from the database.</p>
+    {% elif form_submitted %}
+        <p>Displaying devices based on the selected criteria.</p>
+        <div class="device-container">
+            {% for device in devices %}
+                <div class="device-card" onclick="{{ url_for('device', device_id=device.id) }}'">
+                    <h3>{{ device.name }}</h3>
+                    <p>Category: {{ device.category }}</p>
+                    <p>Price: £{{ device.price }}</p>
+                    <p>CPU Speed: {{ device.cpu_speed }} GHz</p>
+                    <p>RAM: {{ device.ram }} GB</p>
+                    <p>Storage: {{ device.storage }} GB</p>
+                    <p>Screen Size: {{ device.screen_size }} inches</p>
+                    <p>Price: £{{ device.price }}</p>
+                    <button>Select Device</button>
+                    </div>
+            {% endfor %}
+        </div>
+    {% else %}
+    {% endif %}
+    <p>Submit the form above to see results</p>
 </div>
-{% endfor %}
+<!-- Security Recommendations Section -->
+<div class="security-recommendations">
+    <h2>Security Recommendations</h2>
+    <p>Follow our guidelines to ensure your devices are secure and up-to-date.</p>
+    <ul>
+        <li><a href="https://www.cyberessentials.ncsc.gov.uk/">Cyber Essentials Guidelines</a></li>
+        <li><a href="#device-hardening">Operating System Hardening Steps</a></li>
+        <li><a href="#antivirus">Recommended Antivirus Tools</a></li>
+    </ul>
+</div>
+
+<!-- Educational Resources Section -->
+<div class="educational-resources">
+    <h2>Educational Resources</h2>
+    <p>Explore our modules to learn more about digital literacy and cybersecurity.</p>
+    <ul>
+        <li><a href="#cybersecurity-basics">Cybersecurity Basics</a></li>
+        <li><a href="#best-practices">Best Practices for Device Security</a></li>
+    </ul>
+</div>
+
+<!-- Interactive Tutorials Section -->
+<div class="interactive-tutorials">
+    <h2>Interactive Tutorials</h2>
+    <p>Learn how to set up and secure your devices with our step-by-step guides.</p>
+    <a href="#tutorial-setup">Device Setup Tutorial</a>
 </div>
 </body>
+<script>
+    function switchTheme() {
+        const body = document.querySelector('body');
+        body.classList.toggle('dark-mode');
+        body.classList.toggle('light-mode');
+    }
+    
+    const toggleSwitch = document.querySelector('.toggle-checkbox');
+    toggleSwitch.addEventListener('change', switchTheme);
+
+    const carousel = document.querySelector('.device-carousel');
+        let isHovering = false;
+
+        carousel.addEventListener('mouseenter', () => isHovering = true);
+        carousel.addEventListener('mouseleave', () => isHovering = false);
+
+        setInterval(() => {
+            if (!isHovering) {
+                carousel.scrollBy({left: 5, behavior: 'smooth'});
+                if (carousel.scrollWidth - carousel.scrollLeft === carousel.clientWidth) {
+                    carousel.scrollTo({left: 0, behavior: 'smooth'});
+                }
+            }
+        }, 100);
+
+        function submitForm(event) {
+            event.preventDefault(); // Prevent default form submission
+        
+            // Collect form data
+            const formData = new FormData(event.target);
+            const data = {
+                device_type: formData.get('device_type'),
+                price_range: formData.get('price_range'),
+                searchBar: formData.get('searchBar'),
+                cpu_speed: formData.get('cpu_speed'),
+                ram: formData.get('ram'),
+                storage: formData.get('storage'),
+                screen_size: formData.get('screen_size')
+            };
+        
+            // Send an AJAX request to the Flask backend
+            fetch('/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            })
+            .then(response => response.json())
+            .then(devices => {
+                // Clear existing device cards
+                const container = document.querySelector('.device-containers');
+                container.innerHTML = '';
+        
+                // Dynamically create device cards for each device
+                devices.forEach(device => {
+                    const card = document.createElement('div');
+                    card.className = 'device-card';
+                    card.innerHTML = `
+                        <h5>${device.name}</h5>
+                        <p>ID: ${device.id}</p>
+                    `;
+                    container.appendChild(card);
+                });
+            })
+            .catch(error => console.error('Error:', error));
+        }
+</script>
 </html>

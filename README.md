@@ -77,6 +77,71 @@ Additionally, you must have `graphviz` and `ipywidgets` installed if you plan to
 - Submit the form to view the available devices that match the criteria.
 - The application will generate a dynamic flowchart based on the selection, guiding you through the device provisioning process.
 
+# Application Requirements - Progress
+
+## Must Have
+
+### Security Measures:
+- **Detailed Flowchart Creation**: Incorporate security checks into the flowchart for device provisioning.
+- **Integration of Security Standards**: Follow current security standards and protocols.
+- **Hardware and Software Recommendations**: Suggest secure hardware (e.g., DDR5 RAM) and software (e.g., MDM solutions, Antivirus tools).
+- **Operating System Hardening**: Include steps for operating system hardening and update protocols.
+
+### User Guidance:
+- **Clear Instructions**: Provide user-friendly instructions for device provisioning.
+- **Resource Links**: Offer links to resources and toolkits for securing devices.
+- **Device Selection Guidelines**: Guidelines for selecting practical, reliable, and secure devices.
+
+### Comprehensive Standards:
+- **Adherence to Standards**: Follow government and industry standards.
+- **Hardware and Software Specifications**: Offer in-depth recommendations.
+- **Incorporation of Cyber Essentials**: Include Cyber Essentials guidelines and other relevant standards.
+
+### Educational Resources:
+- **Training Modules**: Provide training modules for digital literacy.
+- **Cybersecurity Resources**: Resources for understanding cybersecurity and best practices.
+
+### Scalability:
+- **Adaptable Recommendations**: Scale recommendations based on organizational size and needs (e.g., schools, companies, government departments).
+
+## Should Have
+
+### Compatibility Checks:
+- **Verification Tools**: System compatibility verification tools for hardware and software.
+- **OS and Application Recommendations**: Recommendations for operating systems and applications suitable for different user needs.
+
+### Review and Feedback Mechanism:
+- **Feedback Option**: Allow users to provide feedback on device performance and security.
+- **User Reviews and Ratings**: Incorporate user reviews and ratings to guide future users.
+
+### Device Management Tools:
+- **MDM Integration**: Integrate with Mobile Device Management (MDM) solutions.
+- **Monitoring and Management**: Provide monitoring and management capabilities for IT administrators.
+
+## Could Have
+
+### Customization Options:
+- **Customizable Recommendations**: Tailor recommendations based on specific organizational needs.
+- **Advanced Settings**: Offer advanced settings for tech-savvy users.
+
+### Offline Capabilities:
+- **Offline Access**: Functionality for offline access to guides and toolkits.
+- **Backup and Encryption**: Recommendations for backup and encryption for offline use.
+
+### Interactive Elements:
+- **Interactive Tutorials**: Provide interactive tutorials and videos for device setup and security.
+- **Virtual Assistant**: Include a virtual assistant for real-time support and guidance.
+
+## Won't Have
+
+### Non-Standard Devices:
+- **No Recommendations for Non-Standard Devices**: Avoid recommendations for non-standard or experimental hardware and software.
+- **No Support for Non-Standard Devices**: Do not support devices outside government and industry standards.
+
+### Unverified Sources:
+- **No Unverified User Reviews**: Do not incorporate unverified user reviews or non-validated security measures.
+- **No Endorsement of Third-Party Software**: Avoid endorsement of third-party software without thorough vetting.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit pull requests, report bugs, or suggest features.
