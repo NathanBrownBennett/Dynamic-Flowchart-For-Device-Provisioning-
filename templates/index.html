@@ -8,6 +8,25 @@
         .Advanced-filters {
             display: none;
         }
+        .Advanced-filters : onclick {
+            display: block;
+        }
+
+        .security-recommendations {
+            display: block;
+            outline: 1px dotted black;
+            content: "Security Recommendations";
+        }
+        .educational-resources {
+            display: block;
+            outline: 1px dotted black;
+            content: "Security Recommendations";
+        }
+        .interactive-tutorials {
+            display: block;
+            outline: 1px dotted black;
+            content: "Security Recommendations";
+        }
         .device-carousel {
             display: flex;
             overflow-x: auto;
@@ -249,7 +268,7 @@
                         }
                         updatePriceRangeValue();
                     </script>
-                    <button onclick="document.getElementsByClassName('Advanced-filters')[0].style.display='block'">Advanced Filters</button>
+                    <button id='advFilters' onclick="document.getElementsByClassName('Advanced-filters')[0].style.display='block'">Advanced Filters</button>
                         <div class="Advanced-filters">
                             <div class="Advanced-filters">
                                 <label for="use">Use:</label>
@@ -290,7 +309,9 @@
                         <div>
                             <button id='closebutton' onclick="document.getElementById('device-form').style.display='none'">Close Form</button>
                         </div>
-                        <button type="submit">Show Results</button>
+                        <div>
+                        <button id='submit' type="submit">Show Results</button>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -346,9 +367,9 @@
     <h2>Security Recommendations</h2>
     <p>Follow our guidelines to ensure your devices are secure and up-to-date.</p>
     <ul>
-        <li><a href="https://www.cyberessentials.ncsc.gov.uk/">Cyber Essentials Guidelines</a></li>
-        <li><a href="#device-hardening">Operating System Hardening Steps</a></li>
-        <li><a href="#antivirus">Recommended Antivirus Tools</a></li>
+        <p><a href="https://www.cyberessentials.ncsc.gov.uk/">Cyber Essentials Guidelines</a></p>
+        <p><a href="#device-hardening">Operating System Hardening Steps</a></p>
+        <p><a href="#antivirus">Recommended Antivirus Tools</a></p>
     </ul>
 </div>
 
@@ -357,8 +378,8 @@
     <h2>Educational Resources</h2>
     <p>Explore our modules to learn more about digital literacy and cybersecurity.</p>
     <ul>
-        <li><a href="#cybersecurity-basics">Cybersecurity Basics</a></li>
-        <li><a href="#best-practices">Best Practices for Device Security</a></li>
+        <p><a href="#cybersecurity-basics">Cybersecurity Basics</a></p>
+        <p><a href="#best-practices">Best Practices for Device Security</a></p>
     </ul>
 </div>
 
