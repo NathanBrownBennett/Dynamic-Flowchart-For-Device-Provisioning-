@@ -7,11 +7,21 @@ app = Flask(__name__)
 
 # Minimum requirements based on UK government recommendations
 minimum_requirements = {
-    'cpu_speed': 2.0,  # GHz
-    'ram': 4,          # GB
-    'storage': 64,     # GB
-    'screen_size': 10  # inches
+    'category': 'PC', # Personal Computer/Laptop/Tablet
+    'price': 500,      # GBP
+    'cpu_speed': 3.0,  # GHz
+    'ram': 8,          # GB
+    'storage': 256,     # GB
+    'screen_size': 9,  # inches
 }
+
+def query_database(query, params):
+    conn = sqlite3.connect('devices.db')
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
 def filter_devices(searchBar=None, category=None, price_range=None, specs=None):
     conn = sqlite3.connect('devices.db')

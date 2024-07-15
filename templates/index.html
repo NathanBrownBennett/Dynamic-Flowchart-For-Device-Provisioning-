@@ -416,12 +416,13 @@
         }, 100);
 
         function submitForm(event) {
-            event.preventDefault(); // Prevent default form submission
+            event.preventDefault();
         
             // Collect form data
             const formData = new FormData(event.target);
             const data = {
                 device_type: formData.get('device_type'),
+                Category: formData.get('use'),
                 price_range: formData.get('price_range'),
                 searchBar: formData.get('searchBar'),
                 cpu_speed: formData.get('cpu_speed'),
@@ -450,6 +451,12 @@
                     card.className = 'device-card';
                     card.innerHTML = `
                         <h5>${device.name}</h5>
+                        <p>Category: ${device.category}</p>
+                        <p>Price: £${device.price}</p>
+                        <p>CPU Speed: ${device.cpu_speed} GHz</p>
+                        <p>RAM: ${device.ram} GB</p>
+                        <p>Storage: ${device.storage} GB</p>
+                        <p>Screen Size: ${device.screen_size} inches</p>
                         <p>ID: ${device.id}</p>
                     `;
                     container.appendChild(card);
@@ -457,5 +464,6 @@
             })
             .catch(error => console.error('Error:', error));
         }
+        document.querySelector('form').addEventListener('submit', submitForm);
 </script>
 </html>
