@@ -2,10 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="statis/main.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Device Provisioning Flowchart</title>
     <style>
+
+        .carouselimage {
+            blur: 100px;
+            max-width: 25%;
+            height: auto;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            padding: 5px;
+        }
+
         .Advanced-filters {
             display: none;
         }
@@ -41,18 +50,20 @@
             text-align: center;
             position: relative;
             display: inline-block;
-            width: auto;
+            max-width: 5%;
+            height: auto;
             white-space: normal;
-            margin: 10px;
-            padding: 10px;
             border: 1px solid #ddd;
             border-radius: 5px;
             box-sizing: border-box;
+            background-color: gray;
+            box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+            padding: 10px 20px;
         }
         .device-info {
             display: none;
             position: absolute;
-            background-color: rgba(0,0,0,0.7);
+            background-color: black;
             color: white;
             top: 0;
             left: 0;
@@ -62,6 +73,7 @@
         }
         .device-card:hover .device-info {
             display: block;
+            background-color: white;
         }
         body {
             font-family: Arial, sans-serif;
@@ -207,6 +219,20 @@
         }
     </style>
     <script>
+        function OPEN(){
+            var x = document.getElementsByClassName("Advanced-filters");
+            var i;
+            for (i = 0; i < x.length; i++) {
+                if (x[i].style.display === "none") {
+                    x[i].style.display = "block";
+                    x.innerHTML = "Close Advanced Filters";
+                } else {
+                    x[i].style.display = "none";
+                    x.innerHTML = "Open Advanced Filters";
+                }
+            }
+        }
+
         function checkStandards() {
             const cpuSpeed = document.getElementById('cpu_speed').value;
             const ram = document.getElementById('ram').value;
@@ -269,7 +295,7 @@
                         }
                         updatePriceRangeValue();
                     </script>
-                    <button id='advFilters' onclick="document.getElementsByClassName('Advanced-filters')[0].style.display='block'">Advanced Filters</button>
+                    <button type="button" id='advFilters' onclick=OPEN()>Advanced Filters</button>
                         <div class="Advanced-filters">
                             <div class="Advanced-filters">
                                 <label for="use">Use:</label>
@@ -288,30 +314,30 @@
                             </div>
                             <div class="Advanced-filters">
                                 <label for="cpu_speed">Minimum CPU Speed (GHz):</label>
-                                <input type="range" id="cpu_speed" name="cpu_speed" min="1" max="5" step="0.1" oninput="this.nextElementSibling.value = this.value">
-                                <output>2.0ghz</output>
+                                <input type="range" id="cpu_speed" name="cpu_speed" min="2.5" max="5" step="0.1" oninput="this.nextElementSibling.value = this.value">
+                                <output>2.5 ghz</output>
                             </div>
                             <div class="Advanced-filters">
                                 <label for="ram">Minimum RAM (GB):</label>
-                                <input type="range" id="ram" name="ram" min="4" max="64" step="4" oninput="this.nextElementSibling.value = this.value">
-                                <output>4gb</output>
+                                <input type="range" id="ram" name="ram" min="8" max="128" step="4" oninput="this.nextElementSibling.value = this.value">
+                                <output>8 gb</output>
                             </div>
                             <div class="Advanced-filters">
                                 <label for="storage">Minimum Storage Capacity (GB):</label>
-                                <input type="range" id="storage" name="storage" min="64" max="2000" step="32" oninput="this.nextElementSibling.value = this.value">
-                                <output>64</output>
+                                <input type="range" id="storage" name="storage" min="256" max="2000" step="32" oninput="this.nextElementSibling.value = this.value">
+                                <output>256 GB</output>
                             </div>
                             <div class="Advanced-filters">
                                 <label for="screen_size">Minimum Screen Size (inches):</label>
-                                <input type="range" id="screen_size" name="screen_size" min="7" max="30" step="1" oninput="this.nextElementSibling.value = this.value">
-                                <output>10</output>
+                                <input type="range" id="screen_size" name="screen_size" min="5" max="30" step="1" oninput="this.nextElementSibling.value = this.value">
+                                <output>5 inch</output>
                             </div>
                         </div>
                         <div>
                             <button id='closebutton' onclick="document.getElementById('device-form').style.display='none'">Close Form</button>
                         </div>
                         <div>
-                        <button id='submit' type="submit">Show Results</button>
+                        <button id='submitForm' type="submit" onclick=submitForm()>Show Results</button>
                         </div>
                     </div>
                 </form>
@@ -323,15 +349,16 @@
                 <div class="recommended-device-containers">
                     {% for device in recommended_devices %}
                         <div class="device-card" onclick="{{ url_for('device', device_id=device.id) }}'">
-                                <h3><ul>Device Name: {{ device.name }}</ul></h3>
-                                <p>Device Name: {{ device.name }}</p>
-                                <p>Category: {{ device.category }}</p>
-                                <p>CPU Speed: {{ device.cpu_speed }} GHz</p>
-                                <p>RAM: {{ device.ram }} GB</p>
-                                <p>Storage: {{ device.storage }} GB</p>
-                                <p>Screen Size: {{ device.screen_size }} inches</p>
-                                <p>Price: £{{ device.price }}</p>
-                                <button>Select Device</button>
+                            <img src="{{ device.image }}" class="carouselimage">
+                            <h3><ul>Device Name: {{ device.name }}</ul></h3>
+                            <p>Device Name: {{ device.name }}</p>
+                            <p>Category: {{ device.category }}</p>
+                            <p>CPU Speed: {{ device.cpu_speed }} GHz</p>
+                            <p>RAM: {{ device.ram }} GB</p>
+                            <p>Storage: {{ device.storage }} GB</p>
+                            <p>Screen Size: {{ device.screen_size }} inches</p>
+                            <p>Price: £{{ device.price }}</p>
+                            <button class='carouselSubmit'>Select Device</button>
                         </div>
                     {% endfor %}
                 </div>
@@ -416,55 +443,66 @@
             }
         }, 100);
 
-        function submitForm(event) {
-            event.preventDefault();
-        
-            // Collect form data
-            const formData = new FormData(event.target);
-            const data = {
-                device_type: formData.get('device_type'),
-                Category: formData.get('use'),
-                price_range: formData.get('price_range'),
-                searchBar: formData.get('searchBar'),
-                cpu_speed: formData.get('cpu_speed'),
-                ram: formData.get('ram'),
-                storage: formData.get('storage'),
-                screen_size: formData.get('screen_size')
-            };
-        
-            // Send an AJAX request to the Flask backend
-            fetch('/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data),
-            })
-            .then(response => response.json())
-            .then(devices => {
-                // Clear existing device cards
-                const container = document.querySelector('.device-containers');
-                container.innerHTML = '';
-        
-                // Dynamically create device cards for each device
-                devices.forEach(device => {
-                    const card = document.createElement('div');
-                    card.className = 'device-card';
-                    card.innerHTML = `
-                        <h5>${device.name}</h5>
-                        <p>Category: ${device.category}</p>
-                        <p>Price: £${device.price}</p>
-                        <p>CPU Speed: ${device.cpu_speed} GHz</p>
-                        <p>RAM: ${device.ram} GB</p>
-                        <p>Storage: ${device.storage} GB</p>
-                        <p>Screen Size: ${device.screen_size} inches</p>
-                        <p>ID: ${device.id}</p>
-                    `;
-                    container.appendChild(card);
-                });
-            })
-            .catch(error => console.error('Error:', error));
+    function submitForm(event) {
+        console.log('Form submitted');
+        event.preventDefault();
+
+        var x = document.getElementsByClassName("form-results");
+        var i;
+        for (i = 0; i < x.length; i++) {
+            if (x[i].style.display === "none") {
+                x[i].style.display = "block";
+            } else {
+                x[i].style.display = "none";
+            }
         }
+    
+        // Collect form data
+        const formData = new FormData(event.target);
+        const data = {
+            device_type: formData.get('device_type'),
+            Category: formData.get('use'),
+            price_range: formData.get('price_range'),
+            searchBar: formData.get('searchBar'),
+            cpu_speed: formData.get('cpu_speed'),
+            ram: formData.get('ram'),
+            storage: formData.get('storage'),
+            screen_size: formData.get('screen_size')
+        };
+    
+        // Send an AJAX request to the Flask backend
+        fetch('/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+        })
+        .then(response => response.json())
+        .then(devices => {
+            // Clear existing device cards
+            const container = document.querySelector('.device-containers');
+            container.innerHTML = '';
+    
+            // Dynamically create device cards for each device
+            devices.forEach(device => {
+                const card = document.createElement('div');
+                card.className = 'device-card';
+                card.innerHTML = `
+                    <h5>${device.name}</h5>
+                    <p>Category: ${device.category}</p>
+                    <p>Price: £${device.price}</p>
+                    <p>CPU Speed: ${device.cpu_speed} GHz</p>
+                    <p>RAM: ${device.ram} GB</p>
+                    <p>Storage: ${device.storage} GB</p>
+                    <p>Screen Size: ${device.screen_size} inches</p>
+                    <p>ID: ${device.id}</p>
+                `;
+                container.appendChild(card);
+            });
+        })
+        .catch(error => console.error('Error:', error));
+        
         document.querySelector('form').addEventListener('submit', submitForm);
 </script>
 </html>

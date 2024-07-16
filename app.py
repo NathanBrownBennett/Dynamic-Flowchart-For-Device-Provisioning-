@@ -131,6 +131,7 @@ def submit_feedback():
 
 @app.route("/", methods=["GET", "POST"])
 def index():
+    i = 1
     form_submitted = False
     error_occurred = False
     usage = ''
@@ -141,8 +142,12 @@ def index():
             for device in devices
         ]
     recommended_devices = []
+    
     for device in all_devices:
+        if i > 10:
+            i = 1
         recommended_devices.append({
+            'image': f"static/images/{i}.jpg",
             'id': device['id'],
             'name': device['name'], 
             'category': device['category'], 
@@ -152,6 +157,7 @@ def index():
             'screen_size': device['screen_size'], 
             'price': device['price']
     })
+        i+= 1
     try:
         if request.method == "POST":
             form_submitted = True
@@ -180,6 +186,32 @@ def index():
     personal_use = request.args.get("personal_use", "false").lower() in ["true", "1", "t"]
     flowchart = create_flowchart(devices, personal_use=usage)
     return render_template("index.html", recommended_devices=recommended_devices)
+
+def search_devices():
+    name = request.form.get('searchBar', '%')
+    cpu_speed = request.form.get('cpu_speed', 0)
+    ram = request.form.get('ram', 0)
+    storage = request.form.get('storage', 0)
+    screen_size = request.form.get('screen_size', 0)
+    price_range = request.form.get('price_range', '0,0').split(',')
+    min_price, max_price = price_range if len(price_range) == 2 else (0, 0)
+    conn = sqlite3.connect('devices.db')
+    cur = conn.cursor()
+    query = '''SELECT * FROM devices WHERE name LIKE ? AND cpu_speed >= ? AND ram >= ? AND storage >= ? AND screen_size >= ? AND price >= ? AND price <= ?'''
+    params = [f'%{name}%', float(cpu_speed), int(ram), int(storage), float(screen_size), int(min_price), int(max_price)]
+
+    cur.execute(query, params)
+    devices = cur.fetchall()
+
+    conn.close()
+
+    output = {
+        'devices': devices,
+        'query': query,
+        'params': params
+    }
+
+    return jsonify(output)
 
 @app.route("/device/<int:device_id>")
 def device(device_id):
