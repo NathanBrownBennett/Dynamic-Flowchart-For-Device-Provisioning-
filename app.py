@@ -18,6 +18,7 @@ minimum_requirements = {
 
 def getRecommendedDevices():
     i = 1
+    print("Getting recommended devices")
     devices = filter_devices()
     all_devices = [
             {"id": device[0], "name": device[1], "category": device[2], "cpu_speed": device[3], 
@@ -43,12 +44,15 @@ def getRecommendedDevices():
     return recommended_devices
 
 def query_database(query, params):
+    print("Querying database")
+    devices = []
     conn = sqlite3.connect('devices.db')
     cursor = conn.cursor()
     cursor.execute(query, params)
-    rows = cursor.fetchall()
+    devices = cursor.fetchall()
     conn.close()
-    return rows
+    print("Devices from query_database:", devices)
+    return devices
 
 def filter_devices(searchBar=None, category=None, price_range=None, specs=None):
     conn = sqlite3.connect('devices.db')
@@ -81,7 +85,7 @@ def filter_devices(searchBar=None, category=None, price_range=None, specs=None):
             params.append(specs['screen_size'])
 
     query = "SELECT * FROM devices"
-    if conditions:
+    if conditions != []:
         query += " WHERE " + " AND ".join(conditions)
     print(query)
     print(params)
@@ -139,44 +143,38 @@ def SubmitForm():
     return index(form_submitted=form_submitted, error_occurred=error_occurred, devices=devices)
 
 def search_devices(usage):
-    print("Searching for Devices with usage:",usage)
+    print("Searching for Devices with usage:", usage)
     form_submitted = True
     error_occurred = False
-    name = request.form.get('searchBar', '%')
-    print("Name:",name)
+    name = request.form.get('searchBar', '%')  # Default to '%' if searchBar is empty
+    print("Name:", name)
     price_range = request.form.get('price_range', '0,0').split(',')
-    min_price, max_price = price_range if len(price_range) == 2 else (0, 0)
-    print("Price Range:",min_price,max_price)
-    cpu_speed = request.form.get('cpu_speed', 0)
-    print("CPU Speed:",cpu_speed)
-    ram = request.form.get('ram', 0)
-    print("RAM:",ram)
-    storage = request.form.get('storage', 0)
-    print("Storage:",storage)
-    screen_size = request.form.get('screen_size', 0)
-    print("Screen Size:",screen_size)
-    
+    min_price, max_price = (int(price_range[0]), int(price_range[1])) if len(price_range) == 2 else (0, 0)
+    print("Price Range:", min_price, max_price)
+    cpu_speed = float(request.form.get('cpu_speed', 0))
+    print("CPU Speed:", cpu_speed)
+    ram = int(request.form.get('ram', 0))
+    print("RAM:", ram)
+    storage = int(request.form.get('storage', 0))
+    print("Storage:", storage)
+    screen_size = float(request.form.get('screen_size', 0))
+    print("Screen Size:", screen_size)
+
     valid_usages = ['Personal', 'Student', 'Work', 'Government']
     if usage not in valid_usages:
         print(f"Invalid usage: {usage}")
-        return [], form_submitted, True, error_occurred == True
+        return [], form_submitted, True
     else:
         print(f"Valid usage and table: {usage}")
 
-    table_name = f"{usage}"
-    devices = []
-    query = f"SELECT * FROM {table_name} WHERE name LIKE ? AND price BETWEEN ? AND ? AND cpu_speed >= ? AND ram >= ? AND storage >= ? AND screen_size >= ?"
-    print("Query:",query)
-    params = [str(name), int(min_price), int(max_price), float(cpu_speed), int(ram), int(storage), float(screen_size)]
-    for i in range(len(params)):
-        print(f"Param {i}: {params[i]}")
-        if params[i] == '':
-            params[i] = '*'
-            params.append('*')
-    
+    query = f"SELECT * FROM {usage} WHERE name LIKE ? AND price BETWEEN ? AND ? AND cpu_speed >= ? AND ram >= ? AND storage >= ? AND screen_size >= ?"
+    print("Query:", query)
+    params = [name, min_price, max_price, cpu_speed, ram, storage, screen_size]
+    print("Params:", params)
+
     try:
         devices = query_database(query, params)
-        print("Devices:",devices)
+        print("Devices:", devices)
         return devices, form_submitted, error_occurred
     except sqlite3.OperationalError as e:
         print(f"SQL Error: {e}")
