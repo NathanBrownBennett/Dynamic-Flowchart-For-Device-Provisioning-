@@ -52,17 +52,20 @@
     </style>
 </head>
 <body class="light-mode">
-<div class="container">
-    <div class="device-card">
-        <h3>Device Name: {{ device.name }}</h3>
-        <p>Category: {{ device.category }}</p>
-        <p>CPU Speed: {{ device.cpu_speed }} GHz</p>
-        <p>RAM: {{ device.ram }} GB</p>
-        <p>Storage: {{ device.storage }} GB</p>
-        <p>Screen Size: {{ device.screen_size }} inches</p>
-        <p>Price: £{{ device.price }}</p>
-        <button onclick="window.history.back()">Go Back</button>
+    <div class="container">
+        <div class="device-card">
+            <img src="{{ device.image }}" class="device_image">
+            <h3>Device Name: {{ device.name }}</h3>
+            <p>Category: {{ device.category }}</p>
+            <p>CPU Speed: {{ device.cpu_speed }} GHz</p>
+            <p>RAM: {{ device.ram }} GB</p>
+            <p>Storage: {{ device.storage }} GB</p>
+            <p>Screen Size: {{ device.screen_size }} inches</p>
+            <p>Price: £{{ device.price }}</p>
+            <button onclick="window.history.back()">Go Back</button>
+        </div>
+    <iframe src="{{ url_for('serve_flowchart', image_path=flowchart_image_path) }}" width="800" height="600"></iframe>
     </div>
-</div>
+    <a href="{{ url_for('serve_flowchart', image_path=flowchart_image_path) }}" download>Download Flowchart</a>
 </body>
 </html>

@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import sqlite3
 import graphviz
 
-# Initialize Flask application
 app = Flask(__name__)
-
+form_submitted = False
+error_occurred = False 
+devices=[]
 # Minimum requirements based on UK government recommendations
 minimum_requirements = {
     'category': 'PC', # Personal Computer/Laptop/Tablet
@@ -14,6 +15,32 @@ minimum_requirements = {
     'storage': 256,     # GB
     'screen_size': 9,  # inches
 }
+
+def getRecommendedDevices():
+    i = 1
+    devices = filter_devices()
+    all_devices = [
+            {"id": device[0], "name": device[1], "category": device[2], "cpu_speed": device[3], 
+             "ram": device[4], "storage": device[5], "screen_size": device[6], "price": device[7]}
+            for device in devices
+        ]
+    recommended_devices = []
+    for device in all_devices:
+        if i > 16:
+            i = 1
+        recommended_devices.append({
+            'image': f"static/images/{i}.jpg",
+            'id': device['id'],
+            'name': device['name'], 
+            'category': device['category'], 
+            'cpu_speed': device['cpu_speed'], 
+            'ram': device['ram'], 
+            'storage': device['storage'], 
+            'screen_size': device['screen_size'], 
+            'price': device['price']
+    })
+        i+= 1
+    return recommended_devices
 
 def query_database(query, params):
     conn = sqlite3.connect('devices.db')
@@ -63,57 +90,6 @@ def filter_devices(searchBar=None, category=None, price_range=None, specs=None):
     conn.close()
     return devices
 
-def create_flowchart(devices, personal_use=False):
-    dot = graphviz.Digraph(comment='Device Provisioning Flowchart')
-    
-    # Starting point
-    dot.node('A', 'Are you purchasing for personal or for work use?')
-    dot.node('B', 'Personal Use')
-    dot.node('C', 'Work Use')
-    dot.edge('A', 'B', 'Personal')
-    dot.edge('A', 'C', 'Work')
-    
-    if personal_use:
-        for device in devices:
-            dot.node(device[1], device[1])
-            dot.edge('B', device[1])
-    else:
-        # Work use options
-        dot.node('D', 'Are you looking to offer Personal Computers, Laptops or Tablets for your employees?')
-        dot.edge('C', 'D')
-        
-        # Device categories
-        dot.node('E', 'Personal Computers')
-        dot.node('F', 'Laptops')
-        dot.node('G', 'Tablets')
-        dot.edge('D', 'E', 'PCs')
-        dot.edge('D', 'F', 'Laptops')
-        dot.edge('D', 'G', 'Tablets')
-        
-        # Filtered devices
-        for category, node in zip(['PCs', 'Laptops', 'Tablets'], ['E', 'F', 'G']):
-            filtered_devices = filter_devices(category=category)
-            for device in filtered_devices:
-                dot.node(device[1], device[1])
-                dot.edge(node, device[1])
-        
-        # Additional steps
-        dot.node('H', 'Consider Antivirus Software')
-        dot.node('I', 'Consider Cloud Monitoring Tools')
-        dot.node('J', 'Consider Backup Solutions')
-        dot.node('K', 'Consider Remote Updates and Checkups')
-        dot.node('L', 'Ensure DDR5 RAM and MDM Solutions')
-        dot.node('M', 'Follow OS Hardening and Update Protocols')
-        
-        dot.edge('E', 'H')
-        dot.edge('F', 'H')
-        dot.edge('G', 'H')
-        dot.edge('H', 'I')
-        dot.edge('I', 'J')
-        dot.edge('J', 'K')
-    
-    return dot
-
 @app.route("/resources")
 def resources():
     # Example response with links to educational content
@@ -130,97 +106,141 @@ def submit_feedback():
     return jsonify({"status": "success", "message": "Thank you for your feedback!"})
 
 @app.route("/", methods=["GET", "POST"])
-def index():
-    i = 1
-    form_submitted = False
-    error_occurred = False
-    usage = ''
-    devices = filter_devices()
-    all_devices = [
-            {"id": device[0], "name": device[1], "category": device[2], "cpu_speed": device[3], 
-             "ram": device[4], "storage": device[5], "screen_size": device[6], "price": device[7]}
-            for device in devices
-        ]
+def index(form_submitted=form_submitted, error_occurred=error_occurred, devices=devices):
+    light_mode_image = 'static/images/backgrounds/2.jpg'
+    dark_mode_image = 'static/images/backgrounds/1.png'
     recommended_devices = []
-    
-    for device in all_devices:
-        if i > 10:
-            i = 1
-        recommended_devices.append({
-            'image': f"static/images/{i}.jpg",
-            'id': device['id'],
-            'name': device['name'], 
-            'category': device['category'], 
-            'cpu_speed': device['cpu_speed'], 
-            'ram': device['ram'], 
-            'storage': device['storage'], 
-            'screen_size': device['screen_size'], 
-            'price': device['price']
-    })
-        i+= 1
-    try:
-        if request.method == "POST":
-            form_submitted = True
-            usage = request.form.get("use")
-            category = request.form.get("device_type")
-            price_range = request.form.get("price_range")
-            if price_range:
-                price_range = [int(x) for x in price_range.split(",")]
-            searchBar = str(request.form.get("searchBar"))
-            specs = {
-                'cpu_speed': float(request.form.get("cpu_speed", minimum_requirements['cpu_speed'])),
-                'ram': int(request.form.get("ram", minimum_requirements['ram'])),
-                'storage': int(request.form.get("storage", minimum_requirements['storage'])),
-                'screen_size': float(request.form.get("screen_size", minimum_requirements['screen_size']))
-            }
-            devices = filter_devices(searchBar=searchBar, category=category, price_range=price_range, specs=specs)
-            return render_template("index.html", personal_use=usage, devices=devices, form_submitted=form_submitted, error_occurred=error_occurred, recommended_devices=recommended_devices)
-        else:
-            devices = filter_devices()
-    except Exception as e:
-        print("Error:", e)
-        error_occurred = True
-        recommended_devices = []
-        return render_template("index.html", recommended_devices=recommended_devices)
+    recommended_devices = getRecommendedDevices()
+    if devices == []:
+        form_submitted = False
+        error_occurred = False
+        usage = ''
+        if recommended_devices == []:
+            print("No devices found")
+            error_occurred = True
+            return render_template("index.html", recommended_devices=recommended_devices, light_mode_image=light_mode_image, dark_mode_image=dark_mode_image, form_submitted=form_submitted, error_occurred=error_occurred, devices=devices)
 
-    personal_use = request.args.get("personal_use", "false").lower() in ["true", "1", "t"]
-    flowchart = create_flowchart(devices, personal_use=usage)
-    return render_template("index.html", recommended_devices=recommended_devices)
+        if request.method == "POST" and request.path == "/SubmitForm":
+            devices, form_submitted, error_occurred = SubmitForm(usage)
 
-def search_devices():
+        return render_template("index.html", recommended_devices=recommended_devices, light_mode_image=light_mode_image, dark_mode_image=dark_mode_image, form_submitted=form_submitted, error_occurred=error_occurred, devices=devices)
+    return render_template("index.html", recommended_devices=recommended_devices, light_mode_image=light_mode_image, dark_mode_image=dark_mode_image, form_submitted=form_submitted, error_occurred=error_occurred, devices=devices)
+
+@app.route("/SubmitForm", methods=["GET", "POST"])
+def SubmitForm():
+    usage = request.form.get("use", '')
+    print("Form Submitted. About to search for devices with usage:",usage)
+    devices = []
+    devices = search_devices(usage)
+    print(devices)
+    form_submitted = True
+    error_occurred = False
+    print("Loading Index HTML with sql results")
+    return index(form_submitted=form_submitted, error_occurred=error_occurred, devices=devices)
+
+def search_devices(usage):
+    print("Searching for Devices with usage:",usage)
+    form_submitted = True
+    error_occurred = False
     name = request.form.get('searchBar', '%')
-    cpu_speed = request.form.get('cpu_speed', 0)
-    ram = request.form.get('ram', 0)
-    storage = request.form.get('storage', 0)
-    screen_size = request.form.get('screen_size', 0)
+    print("Name:",name)
     price_range = request.form.get('price_range', '0,0').split(',')
     min_price, max_price = price_range if len(price_range) == 2 else (0, 0)
-    conn = sqlite3.connect('devices.db')
-    cur = conn.cursor()
-    query = '''SELECT * FROM devices WHERE name LIKE ? AND cpu_speed >= ? AND ram >= ? AND storage >= ? AND screen_size >= ? AND price >= ? AND price <= ?'''
-    params = [f'%{name}%', float(cpu_speed), int(ram), int(storage), float(screen_size), int(min_price), int(max_price)]
+    print("Price Range:",min_price,max_price)
+    cpu_speed = request.form.get('cpu_speed', 0)
+    print("CPU Speed:",cpu_speed)
+    ram = request.form.get('ram', 0)
+    print("RAM:",ram)
+    storage = request.form.get('storage', 0)
+    print("Storage:",storage)
+    screen_size = request.form.get('screen_size', 0)
+    print("Screen Size:",screen_size)
+    
+    valid_usages = ['Personal', 'Student', 'Work', 'Government']
+    if usage not in valid_usages:
+        print(f"Invalid usage: {usage}")
+        return [], form_submitted, True, error_occurred == True
+    else:
+        print(f"Valid usage and table: {usage}")
 
-    cur.execute(query, params)
-    devices = cur.fetchall()
-
-    conn.close()
-
-    output = {
-        'devices': devices,
-        'query': query,
-        'params': params
-    }
-
-    return jsonify(output)
+    table_name = f"{usage}"
+    devices = []
+    query = f"SELECT * FROM {table_name} WHERE name LIKE ? AND price BETWEEN ? AND ? AND cpu_speed >= ? AND ram >= ? AND storage >= ? AND screen_size >= ?"
+    print("Query:",query)
+    params = [str(name), int(min_price), int(max_price), float(cpu_speed), int(ram), int(storage), float(screen_size)]
+    for i in range(len(params)):
+        print(f"Param {i}: {params[i]}")
+        if params[i] == '':
+            params[i] = '*'
+            params.append('*')
+    
+    try:
+        devices = query_database(query, params)
+        print("Devices:",devices)
+        return devices, form_submitted, error_occurred
+    except sqlite3.OperationalError as e:
+        print(f"SQL Error: {e}")
+        devices = []
+        error_occurred = True
+        return devices, form_submitted, error_occurred
 
 @app.route("/device/<int:device_id>")
 def device(device_id):
+    usage = request.form.get("usage", '')
+    print("loading device page with id:",device_id)
     conn = sqlite3.connect('devices.db')
     c = conn.cursor()
     c.execute("SELECT * FROM devices WHERE id=?", (device_id,))
-    device = c.fetchone()
+    device = c.fetchall()
+    flowchart = create_flowchart(device, usage=usage)
+    images = [f"static/images/{i}.jpg" for i in range(1, 17)]
     conn.close()
-    return render_template("device.html", device=device)
+    
+    if device:
+        flowchart_image_path = create_flowchart(device, usage)  # Assuming the third column is 'usage'
+        return render_template("device.html", device=device, flowchart_image_path=flowchart_image_path)
+    else:
+        return render_template("device.html", device=device, images=images), 404
+
+def create_flowchart(device, usage):
+    dot = graphviz.Digraph(comment='Device Recommendations')
+    dot.node('A', f'Device: {device}')
+    dot.node('B', 'Recommended Software')
+    dot.node('C', 'Security Measures')
+    dot.edges(['AB', 'AC'])
+
+    usage_to_table = {
+        'Personal': 'PersonalUseSoftware',
+        'Student': 'StudentUseSoftware',
+        'Work': 'WorkUseSoftware',
+        'Government': 'GovernmentUseSoftware'
+    }
+
+    conn = sqlite3.connect('devices.db')
+    cursor = conn.cursor()
+
+    table_name = usage_to_table.get(usage, 'PersonalUseSoftware')  # Default to PersonalUseSoftware if usage is not found
+
+    query = f"SELECT Software FROM {table_name}"
+    cursor.execute(query)
+
+    software_entries = cursor.fetchall()
+
+    for i, entry in enumerate(software_entries, start=1):
+        software_node = f'S{i}'
+        dot.node(software_node, entry[0])
+        dot.edge('B', software_node)
+
+    image_path = f"static/flowcharts/{device[0]}.svg"
+    dot.render(image_path, format='svg', cleanup=True)
+
+    conn.close()
+
+    return image_path + '.svg'
+
+@app.route("/flowchart/<path:image_path>")
+def serve_flowchart(image_path):
+    return send_file(image_path, mimetype='image/svg+xml')
 
 @app.route("/flowchart")
 def flowchart():

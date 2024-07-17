@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Device Provisioning Flowchart</title>
     <style>
-
         .carouselimage {
             blur: 100px;
             max-width: 25%;
@@ -219,6 +218,20 @@
         }
     </style>
     <script>
+        function switchTheme() {
+            const body = document.querySelector('body');
+            body.classList.toggle('dark-mode');
+            body.classList.toggle('light-mode');
+            if (body.classList.contains('dark-mode')) {
+                body.style.image = "background-image: url('{{dark_mode_image}}')";
+            } else {
+                body.style.image = "background-image: url('{{light_mode_image}}')";
+            }
+        }
+        
+        const toggleSwitch = document.querySelector('.toggle-checkbox');
+        toggleSwitch.addEventListener('change', switchTheme());
+
         function OPEN(){
             var x = document.getElementsByClassName("Advanced-filters");
             var i;
@@ -239,10 +252,10 @@
             const storage = document.getElementById('storage').value;
             const screenSize = document.getElementById('screen_size').value;
 
-            const minCpuSpeed = 2.0;
-            const minRam = 4;
-            const minStorage = 64;
-            const minScreenSize = 10;
+            const minCpuSpeed = 3.0;
+            const minRam = 8;
+            const minStorage = 256;
+            const minScreenSize = 9;
 
             let alertMessage = '';
             if (cpuSpeed < minCpuSpeed) alertMessage += 'CPU Speed below recommended standards.\n';
@@ -254,7 +267,7 @@
         }
     </script>
 </head>
-<body class="light-mode">
+<body class="light_mode" style="background-image: url('{{light_mode_image}}')">
     <div class="toggle-container">
         <label for="toggle" class="toggle-label">Dark Mode</label>
         <input type="checkbox" id="toggle" class="toggle-checkbox">
@@ -264,7 +277,7 @@
         <h1><ul>Device Provisioning Flowchart</ul></h1>
         <button id='openbutton' onclick="document.getElementById('device-form').style.display='block'">Open Form</button>
         <div id="device-form" class="form-container">
-            <form action="/" method="POST" onsubmit="checkStandards()">
+            <form action="{{ url_for('SubmitForm')}}" method="POST" onsubmit="checkStandards()">
                 <div class="container">
                     <!-- Search Bar -->
                     <div class="form-group">
@@ -280,7 +293,7 @@
                     </div>
                     <div class="form-group">
                         <label for="price_range">Price Range (£):</label>
-                        <input type="range" id="price_range_min" name="price_range_min" min="0" max="3000" value="50" oninput="updatePriceRangeValue()">
+                        <input type="range" id="price_range_min" name="price_range_min" min="0" max="3000" value="100" oninput="updatePriceRangeValue()">
                         <input type="range" id="price_range_max" name="price_range_max" min="0" max="3000" value="1500" oninput="updatePriceRangeValue()">
                         <p>Min: £<span id="price_range_min_value">£100</span> - Max: £<span id="price_range_max_value">£1500</span></p>
                         <input type="hidden" id="price_range" name="price_range">
@@ -302,6 +315,8 @@
                                 <select id="use" name="use">
                                     <option value="Personal">Personal</option>
                                     <option value="Work">Work</option>
+                                    <option value="Government">Government</option>
+                                    <option value="Education">Education</option>
                                 </select>
                             </div>
                             <div class="Advanced-filters">
@@ -358,7 +373,7 @@
                             <p>Storage: {{ device.storage }} GB</p>
                             <p>Screen Size: {{ device.screen_size }} inches</p>
                             <p>Price: £{{ device.price }}</p>
-                            <button class='carouselSubmit'>Select Device</button>
+                            <a href="{{url_for('device', device_id=device.id)}}" class='carouselSubmit'>Select Device</a>
                         </div>
                     {% endfor %}
                 </div>
@@ -423,10 +438,15 @@
         const body = document.querySelector('body');
         body.classList.toggle('dark-mode');
         body.classList.toggle('light-mode');
+        if (body.classList.contains('dark-mode')) {
+            body.style.image.innerHTML = "background-image: url('{{dark_mode_image}}')";
+        } else {
+            body.style.image.innerHTML = "background-image: url('{{light_mode_image}}')";
+        }
     }
     
     const toggleSwitch = document.querySelector('.toggle-checkbox');
-    toggleSwitch.addEventListener('change', switchTheme);
+    toggleSwitch.addEventListener('change', switchTheme());
 
     const carousel = document.querySelector('.device-carousel');
         let isHovering = false;
