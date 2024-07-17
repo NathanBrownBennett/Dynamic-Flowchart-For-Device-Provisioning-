@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, send_file
 import sqlite3
 import graphviz
+import random
 
 app = Flask(__name__)
 form_submitted = False
@@ -26,6 +27,28 @@ def query_database(query, params):
     print(f"Query results: {results}")
     return results
 
+def convert_to_dict(a):
+    images = []
+    str = 'static/images'
+    for i in str:
+        images.append = f'{str}/{i}.jpg'
+        print(i)
+        print(images)
+    for device in a:
+        devices= {
+            'id': device[0],
+            'name': device[1],
+            'category': device[2],
+            'cpu_speed': device[3],
+            'ram': device[4],
+            'storage': device[5],
+            'screen_size': device[6],
+            'price': device[7],
+            'image': random.choice(images)
+        }
+        devices.append(devices)
+    return devices
+
 @app.route("/resources")
 def resources():
     # Example response with links to educational content
@@ -46,8 +69,8 @@ def index(form_submitted=form_submitted, error_occurred=error_occurred, devices=
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM devices')
     recommended_devices = cursor.fetchall()
-    devices = devices
     conn.close()
+    recommended_devices = convert_to_dict(recommended_devices)
     print(f"Recommended devices: {recommended_devices}")
     return render_template('index.html', recommended_devices=recommended_devices,  light_mode_image=light_mode_image,  dark_mode_image=dark_mode_image,  form_submitted=form_submitted,  error_occurred=error_occurred,  devices=devices)
 
@@ -88,6 +111,7 @@ def SubmitForm():
     print(f"Params: {params}")
     
     devices = query_database(query, params)
+    devices = convert_to_dict(devices)
     form_submitted = True
     error_occurred = not bool(devices)
     
@@ -105,6 +129,18 @@ def device(device_id):
     cursor.execute('SELECT * FROM devices WHERE id = ?', (device_id,))
     device = cursor.fetchone()
     conn.close()
+    if device:
+        device = {
+            'id': device[0],
+            'name': device[1],
+            'category': device[2],
+            'cpu_speed': device[3],
+            'ram': device[4],
+            'storage': device[5],
+            'screen_size': device[6],
+            'price': device[7],
+            'image': device[8]
+        }
     print(f"Device details for ID {device_id}: {device}")
     
     return render_template('device.html', device=device)
