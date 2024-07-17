@@ -6,14 +6,15 @@ import random
 app = Flask(__name__)
 form_submitted = False
 error_occurred = False 
-devices=[]
+devices = []
+
 # Minimum requirements based on UK government recommendations
 minimum_requirements = {
-    'category': 'PC', # Personal Computer/Laptop/Tablet
+    'category': 'PC',  # Personal Computer/Laptop/Tablet
     'price': 500,      # GBP
     'cpu_speed': 3.0,  # GHz
     'ram': 8,          # GB
-    'storage': 256,     # GB
+    'storage': 256,    # GB
     'screen_size': 9,  # inches
 }
 
@@ -27,15 +28,16 @@ def query_database(query, params):
     print(f"Query results: {results}")
     return results
 
-def convert_to_dict(a):
-    images = []
-    str = 'static/images'
-    for i in str:
-        images.append = f'{str}/{i}.jpg'
-        print(i)
-        print(images)
-    for device in a:
-        devices= {
+def get_image_paths():
+    base_path = 'static/images'
+    images = [f'{base_path}/{i}.jpg' for i in range(1, 17)]
+    return images
+
+def convert_to_dict(devices):
+    images = get_image_paths()
+    device_list = []
+    for device in devices:
+        device_dict = {
             'id': device[0],
             'name': device[1],
             'category': device[2],
@@ -44,10 +46,10 @@ def convert_to_dict(a):
             'storage': device[5],
             'screen_size': device[6],
             'price': device[7],
-            'image': random.choice(images)
+            'image': random.choice(images)  # Assign a random image to each device
         }
-        devices.append(devices)
-    return devices
+        device_list.append(device_dict)  # Append the dictionary to the list
+    return device_list
 
 @app.route("/resources")
 def resources():
@@ -72,7 +74,7 @@ def index(form_submitted=form_submitted, error_occurred=error_occurred, devices=
     conn.close()
     recommended_devices = convert_to_dict(recommended_devices)
     print(f"Recommended devices: {recommended_devices}")
-    return render_template('index.html', recommended_devices=recommended_devices,  light_mode_image=light_mode_image,  dark_mode_image=dark_mode_image,  form_submitted=form_submitted,  error_occurred=error_occurred,  devices=devices)
+    return render_template('index.html', recommended_devices=recommended_devices, light_mode_image=light_mode_image, dark_mode_image=dark_mode_image, form_submitted=form_submitted, error_occurred=error_occurred, devices=devices)
 
 @app.route('/SubmitForm', methods=['POST'])
 def SubmitForm():
@@ -81,7 +83,8 @@ def SubmitForm():
     print("Form Submitted. About to search for devices with form data:", form_data)
     
     name = form_data.get('searchBar', '')
-    price_range = form_data.get('price_range', '100,1500').split(',')
+    price_range_min = form_data.get('price_range_min', '100')
+    price_range_max = form_data.get('price_range_max', '1500')
     cpu_speed = float(form_data.get('cpu_speed', 0))
     ram = int(form_data.get('ram', 0))
     storage = int(form_data.get('storage', 0))
@@ -89,7 +92,7 @@ def SubmitForm():
     use = form_data.get('use', 'Personal')
     
     print(f"Name: {name}")
-    print(f"Price Range: {price_range[0]} {price_range[1]}")
+    print(f"Price Range: {price_range_min} {price_range_max}")
     print(f"CPU Speed: {cpu_speed}")
     print(f"RAM: {ram}")
     print(f"Storage: {storage}")
@@ -106,7 +109,7 @@ def SubmitForm():
       AND storage >= ? 
       AND screen_size >= ?
     """
-    params = [f'%{name}%', int(price_range[0]), int(price_range[1]), cpu_speed, ram, storage, screen_size]
+    params = [f'%{name}%', int(price_range_min), int(price_range_max), cpu_speed, ram, storage, screen_size]
     print(f"Query: {query}")
     print(f"Params: {params}")
     
@@ -130,17 +133,7 @@ def device(device_id):
     device = cursor.fetchone()
     conn.close()
     if device:
-        device = {
-            'id': device[0],
-            'name': device[1],
-            'category': device[2],
-            'cpu_speed': device[3],
-            'ram': device[4],
-            'storage': device[5],
-            'screen_size': device[6],
-            'price': device[7],
-            'image': device[8]
-        }
+        device = convert_to_dict([device])[0]
     print(f"Device details for ID {device_id}: {device}")
     
     return render_template('device.html', device=device)
