@@ -363,7 +363,7 @@
             <div class="device-carousel">
                 <div class="recommended-device-containers">
                     {% for device in recommended_devices %}
-                        <div class="device-card" onclick="{{ url_for('device', device_id=device.id) }}'">
+                        <div class="device-card" onclick="window.location.href='{{ url_for('device', device_id=device.id) }}'">
                             <img src="{{ device.image }}" class="carouselimage">
                             <h3><ul>Device Name: {{ device.name }}</ul></h3>
                             <p>Device Name: {{ device.name }}</p>
@@ -381,7 +381,7 @@
         </div>  
     </div>
 <div class="form-results">
-    <h2>Form Results</h2>
+    <h3>Form Results</h3>
     {% if error_occurred %}
     <p>There has been an error retrieving results from the database.</p>
     {% elif form_submitted %}
