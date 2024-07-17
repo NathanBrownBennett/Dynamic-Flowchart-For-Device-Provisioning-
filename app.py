@@ -5,7 +5,7 @@ import random
 
 app = Flask(__name__)
 form_submitted = False
-error_occurred = False 
+error_occurred = False
 devices = []
 
 # Minimum requirements based on UK government recommendations
@@ -60,11 +60,57 @@ def resources():
     })
 
 @app.route("/", methods=["GET", "POST"])
-def index(form_submitted=form_submitted, error_occurred=error_occurred, devices=devices):
+def index():
+    global form_submitted, error_occurred, devices
     light_mode_image = 'static/images/backgrounds/2.jpg'
     dark_mode_image = 'static/images/backgrounds/1.png'
-    if devices is None:
-        devices = []
+    if request.method == 'POST':
+        form_submitted = False
+        error_occurred = False
+        form_data = request.form
+        print("Form Submitted. About to search for devices with form data:", form_data)
+        
+        name = form_data.get('searchBar', '')
+        price_range_min = form_data.get('price_range_min', '100')
+        price_range_max = form_data.get('price_range_max', '1500')
+        cpu_speed = float(form_data.get('cpu_speed', 0))
+        ram = int(form_data.get('ram', 0))
+        storage = int(form_data.get('storage', 0))
+        screen_size = float(form_data.get('screen_size', 0))
+        use = form_data.get('use', 'Personal')
+        
+        print(f"Name: {name}")
+        print(f"Price Range: {price_range_min} {price_range_max}")
+        print(f"CPU Speed: {cpu_speed}")
+        print(f"RAM: {ram}")
+        print(f"Storage: {storage}")
+        print(f"Screen Size: {screen_size}")
+        print(f"Valid usage and table: {use}")
+        
+        # Adjust query according to your database schema
+        query = f"""
+        SELECT * FROM {use} 
+        WHERE name LIKE ? 
+          AND price BETWEEN ? AND ? 
+          AND cpu_speed >= ? 
+          AND ram >= ? 
+          AND storage >= ? 
+          AND screen_size >= ?
+        """
+        params = [f'%{name}%', int(price_range_min), int(price_range_max), cpu_speed, ram, storage, screen_size]
+        print(f"Query: {query}")
+        print(f"Params: {params}")
+        
+        devices = query_database(query, params)
+        devices = convert_to_dict(devices)
+        form_submitted = True
+        error_occurred = not bool(devices)
+        
+        print(f"Devices from query_database: {devices}")
+        print(f"Devices: {devices}")
+        print(f"({devices}, {form_submitted}, {error_occurred})")
+        print("Loading Index HTML with sql results")
+
     # Fetch recommended devices from the database
     print("Getting recommended devices")
     conn = sqlite3.connect('devices.db')
@@ -75,55 +121,6 @@ def index(form_submitted=form_submitted, error_occurred=error_occurred, devices=
     recommended_devices = convert_to_dict(recommended_devices)
     print(f"Recommended devices: {recommended_devices}")
     return render_template('index.html', recommended_devices=recommended_devices, light_mode_image=light_mode_image, dark_mode_image=dark_mode_image, form_submitted=form_submitted, error_occurred=error_occurred, devices=devices)
-
-@app.route('/SubmitForm', methods=['POST'])
-def SubmitForm():
-    # Capture form inputs
-    form_data = request.form
-    print("Form Submitted. About to search for devices with form data:", form_data)
-    
-    name = form_data.get('searchBar', '')
-    price_range_min = form_data.get('price_range_min', '100')
-    price_range_max = form_data.get('price_range_max', '1500')
-    cpu_speed = float(form_data.get('cpu_speed', 0))
-    ram = int(form_data.get('ram', 0))
-    storage = int(form_data.get('storage', 0))
-    screen_size = float(form_data.get('screen_size', 0))
-    use = form_data.get('use', 'Personal')
-    
-    print(f"Name: {name}")
-    print(f"Price Range: {price_range_min} {price_range_max}")
-    print(f"CPU Speed: {cpu_speed}")
-    print(f"RAM: {ram}")
-    print(f"Storage: {storage}")
-    print(f"Screen Size: {screen_size}")
-    print(f"Valid usage and table: {use}")
-    
-    # Adjust query according to your database schema
-    query = """
-    SELECT * FROM devices 
-    WHERE name LIKE ? 
-      AND price BETWEEN ? AND ? 
-      AND cpu_speed >= ? 
-      AND ram >= ? 
-      AND storage >= ? 
-      AND screen_size >= ?
-    """
-    params = [f'%{name}%', int(price_range_min), int(price_range_max), cpu_speed, ram, storage, screen_size]
-    print(f"Query: {query}")
-    print(f"Params: {params}")
-    
-    devices = query_database(query, params)
-    devices = convert_to_dict(devices)
-    form_submitted = True
-    error_occurred = not bool(devices)
-    
-    print(f"Devices from query_database: {devices}")
-    print(f"Devices: {devices}")
-    print(f"({devices}, {form_submitted}, {error_occurred})")
-    print("Loading Index HTML with sql results")
-    
-    return index(form_submitted=form_submitted, error_occurred=error_occurred, devices=devices)
 
 @app.route('/device/<int:device_id>')
 def device(device_id):
@@ -136,11 +133,13 @@ def device(device_id):
         device = convert_to_dict([device])[0]
     print(f"Device details for ID {device_id}: {device}")
     
-    return render_template('device.html', device=device)
+    flowchart_image_path = create_flowchart(device, device['category'])
+    
+    return render_template('device.html', device=device, flowchart_image_path=flowchart_image_path)
 
 def create_flowchart(device, usage):
     dot = graphviz.Digraph(comment='Device Recommendations')
-    dot.node('A', f'Device: {device}')
+    dot.node('A', f'Device: {device["name"]}')
     dot.node('B', 'Recommended Software')
     dot.node('C', 'Security Measures')
     dot.edges(['AB', 'AC'])
@@ -167,7 +166,16 @@ def create_flowchart(device, usage):
         dot.node(software_node, entry[0])
         dot.edge('B', software_node)
 
-    image_path = f"static/flowcharts/{device[0]}.svg"
+    query = "SELECT * FROM SecurityRecommendations"
+    cursor.execute(query)
+    security_entries = cursor.fetchall()
+
+    for i, entry in enumerate(security_entries, start=1):
+        security_node = f'C{i}'
+        dot.node(security_node, entry[1])
+        dot.edge('C', security_node)
+
+    image_path = f"static/flowcharts/{device['id']}.svg"
     dot.render(image_path, format='svg', cleanup=True)
 
     conn.close()

@@ -64,8 +64,26 @@
             <p>Price: £{{ device.price }}</p>
             <button onclick="window.history.back()">Go Back</button>
         </div>
-    <iframe src="{{ url_for('serve_flowchart', image_path=flowchart_image_path) }}" width="800" height="600"></iframe>
+        <iframe id="flowchartIframe" src="{{ url_for('serve_flowchart', image_path=flowchart_image_path) }}" width="800" height="600" style="display:none;"></iframe>
+        <button onclick="toggleFlowchart()">Show Flowchart</button>
+        <button onclick="downloadFlowchart()">Download Flowchart</button>
     </div>
-    <a href="{{ url_for('serve_flowchart', image_path=flowchart_image_path) }}" download>Download Flowchart</a>
+    <script>
+        function toggleFlowchart() {
+            const iframe = document.getElementById('flowchartIframe');
+            if (iframe.style.display === "none") {
+                iframe.style.display = "block";
+            } else {
+                iframe.style.display = "none";
+            }
+        }
+
+        function downloadFlowchart() {
+            const link = document.createElement('a');
+            link.href = document.getElementById('flowchartIframe').src;
+            link.download = 'flowchart.svg';
+            link.click();
+        }
+    </script>
 </body>
 </html>
