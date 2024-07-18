@@ -34,6 +34,8 @@ def get_image_paths():
     return images
 
 def convert_to_dict(devices):
+    if not devices:
+        return []
     images = get_image_paths()
     device_list = []
     for device in devices:
@@ -64,8 +66,21 @@ def index():
     global form_submitted, error_occurred, devices
     light_mode_image = 'static/images/backgrounds/2.jpg'
     dark_mode_image = 'static/images/backgrounds/1.png'
+    form_submitted = False
+    error_occurred = False
+    
+    # Fetch recommended devices from the database
+    print("Getting recommended devices")
+    conn = sqlite3.connect('devices.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM devices')
+    recommended_devices = cursor.fetchall()
+    conn.close()
+    recommended_devices = convert_to_dict(recommended_devices)
+    print(f"Recommended devices: {recommended_devices}")
+    
     if request.method == 'POST':
-        form_submitted = False
+        form_submitted = True
         error_occurred = False
         form_data = request.form
         print("Form Submitted. About to search for devices with form data:", form_data)
@@ -89,7 +104,7 @@ def index():
         
         # Adjust query according to your database schema
         query = f"""
-        SELECT * FROM {use} 
+        SELECT * FROM devices 
         WHERE name LIKE ? 
           AND price BETWEEN ? AND ? 
           AND cpu_speed >= ? 
@@ -101,25 +116,17 @@ def index():
         print(f"Query: {query}")
         print(f"Params: {params}")
         
-        devices = query_database(query, params)
-        devices = convert_to_dict(devices)
-        form_submitted = True
-        error_occurred = not bool(devices)
+        if devices == []:
+            devices = recommended_devices
+        else:
+            devices = query_database(query, params)
+            devices = convert_to_dict(devices)
         
         print(f"Devices from query_database: {devices}")
         print(f"Devices: {devices}")
         print(f"({devices}, {form_submitted}, {error_occurred})")
         print("Loading Index HTML with sql results")
 
-    # Fetch recommended devices from the database
-    print("Getting recommended devices")
-    conn = sqlite3.connect('devices.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM devices')
-    recommended_devices = cursor.fetchall()
-    conn.close()
-    recommended_devices = convert_to_dict(recommended_devices)
-    print(f"Recommended devices: {recommended_devices}")
     return render_template('index.html', recommended_devices=recommended_devices, light_mode_image=light_mode_image, dark_mode_image=dark_mode_image, form_submitted=form_submitted, error_occurred=error_occurred, devices=devices)
 
 @app.route('/device/<int:device_id>')

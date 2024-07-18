@@ -13,14 +13,14 @@
             border: 1px solid #ddd;
             padding: 5px;
         }
-
+    
         .Advanced-filters {
             display: none;
         }
-        .Advanced-filters : onclick {
+        .Advanced-filters:onclick {
             display: block;
         }
-
+    
         .security-recommendations {
             display: block;
             outline: 1px dotted black;
@@ -32,7 +32,7 @@
             background-color: rgba(200, 200, 200, 0.3);
             cursor: pointer;
         }
-
+    
         .educational-resources {
             display: block;
             outline: 1px dotted black;
@@ -44,14 +44,31 @@
             background-color: rgba(200, 200, 200, 0.3);
             cursor: pointer;
         }
-
+    
         .device-carousel {
             display: flex;
             overflow-x: auto;
             scroll-behavior: smooth;
             white-space: nowrap;
         }
-        .device-card {
+    
+        .device-card-result {
+            flex: 1 1 calc(25% - 20px);
+            text-align: center;
+            position: relative;
+            display: inline-block;
+            height: auto;
+            white-space: normal;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+            background-color: gray;
+            box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+            padding: 10px 20px;
+            transition: background-color 0.3s, box-shadow 0.3s;
+        }
+    
+        .device-card-carousel {
             text-align: center;
             position: relative;
             display: inline-block;
@@ -64,7 +81,17 @@
             background-color: gray;
             box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
             padding: 10px 20px;
+            transition: background-color 0.3s, box-shadow 0.3s;
         }
+    
+        .device-cards-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            padding: 20px;
+            gap: 20px;
+        }
+    
         .device-info {
             display: none;
             position: absolute;
@@ -76,10 +103,12 @@
             bottom: 0;
             padding: 10px;
         }
-        .device-card:hover .device-info {
+        .device-card-carousel:hover .device-info {
             display: block;
             background-color: white;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
+    
         body {
             font-family: Arial, sans-serif;
             transition: background-color 0.3s, color 0.3s;
@@ -87,12 +116,12 @@
         .dark-mode {
             background-color: black;
             color: white;
-          }
+        }
         .light-mode {
             background-color: rgba(255,255,255,.4);
             color: black;
-          }
-
+        }
+    
         .container {
             width: 80%;
             margin: auto;
@@ -134,7 +163,7 @@
         button:hover {
             background-color: #218838;
         }
-        .device-card {
+        .device-card-carousel {
             border: 1px solid #ddd;
             border-radius: 5px;
             padding: 15px;
@@ -144,8 +173,18 @@
             box-sizing: border-box;
             transition: transform 0.2s;
         }
-        .device-card:hover {
+        .device-card-carousel:hover {
             transform: scale(1.05);
+        }
+        .device-card-result {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px;
+            display: inline-block;
+            width: 30%;
+            box-sizing: border-box;
+            transition: transform 0.2s;
         }
         .device-card h3 {
             margin-top: 0;
@@ -190,9 +229,31 @@
             padding: 20px;
             text-align: center;
         }
+    
+        @media (max-width: 1200px) {
+            .device-card-result {
+                flex: 1 1 calc(33.333% - 20px); /* Three cards per row */
+            }
+        }
+        
+        @media (max-width: 900px) {
+            .device-card-result {
+                flex: 1 1 calc(50% - 20px); /* Two cards per row */
+            }
+        }
+        
+        @media (max-width: 600px) {
+            .device-card-result {
+                flex: 1 1 calc(100% - 20px); /* One card per row */
+            }
+        }
+    
         @media only screen and (max-width: 768px) {
-            .device-card {
+            .device-card-carousel {
                 width: 100%;
+            }
+            .device-card-result {
+                min-width: 25%;
             }
             .reccomended-device-containers {
                 display: block;
@@ -213,7 +274,7 @@
                 width: 100%;
             }
         }
-    </style>
+    </style>    
     <script>
         function switchTheme() {
             const body = document.querySelector('body');
@@ -360,7 +421,7 @@
             <div class="device-carousel">
                 <div class="recommended-device-containers">
                     {% for device in recommended_devices %}
-                        <div class="device-card" onclick="window.location.href='{{ url_for('device', device_id=device.id) }}'">
+                        <div class="device-card-carousel" onclick="window.location.href='{{ url_for('device', device_id=device.id) }}'">
                             <img src="{{ device.image }}" class="carouselimage">
                             <h3><ul>Device Name: {{ device.name }}</ul></h3>
                             <p>Device Name: {{ device.name }}</p>
@@ -385,7 +446,7 @@
         <p>Displaying devices based on the selected criteria.</p>
         <div class="device-container">
             {% for device in devices %}
-                <div class="device-card" onclick="{{ url_for('device', device_id=device.id) }}'">
+                <div class="device-card-result" onclick="{{ url_for('device', device_id=device.id) }}'">
                     <img src="{{ device.image }}" class="carouselimage">
                     <h3>{{ device.name }}</h3>
                     <p>Category: {{ device.category }}</p>
@@ -394,7 +455,7 @@
                     <p>RAM: {{ device.ram }} GB</p>
                     <p>Storage: {{ device.storage }} GB</p>
                     <p>Screen Size: {{ device.screen_size }} inches</p>
-                    <button>Select Device</button>
+                    <button><a href="{{url_for('device', device_id=device.id)}}">Select Device</a></button>
                     </div>
             {% endfor %}
         </div>

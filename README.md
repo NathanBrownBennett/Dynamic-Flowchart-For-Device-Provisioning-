@@ -8,6 +8,9 @@ This application simplifies the provisioning of devices to employees or end-user
 - **Device Filtering**: Filters devices from a database based on category, price range, and specifications like CPU speed, RAM, storage, and screen size.
 - **Customizable Specifications**: Allows setting minimum requirements for device specifications.
 - **Interactive Web Interface**: Provides a web interface for easy interaction and decision-making.
+- **Form Results**: Displays devices matching the user's search criteria.
+- **Security Recommendations**: Provides guidelines to ensure devices are secure and up-to-date.
+- **Educational Resources**: Links to modules on digital literacy and cybersecurity.
 
 ## Prerequisites
 
@@ -77,7 +80,15 @@ Additionally, you must have `graphviz` and `ipywidgets` installed if you plan to
 - Submit the form to view the available devices that match the criteria.
 - The application will generate a dynamic flowchart based on the selection, guiding you through the device provisioning process.
 
-# Application Requirements - Progress
+## Project Structure
+
+- **app.py**: The main Flask application file. Handles routing, form submission, querying the database, and rendering HTML templates.
+- **create_db.py**: A script to create and populate the SQLite database (`devices.db`) with device data.
+- **index.html**: The main HTML template for the home page. Contains the device search form, recommended devices carousel, and sections for form results, security recommendations, and educational resources.
+- **device.html**: HTML template for displaying detailed information about a selected device.
+- **devices.db**: SQLite database file containing device data.
+
+# Application Requirements - Completed
 
 ## Must Have
 
