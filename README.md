@@ -80,6 +80,8 @@ Additionally, you must have `graphviz` and `ipywidgets` installed if you plan to
 - Submit the form to view the available devices that match the criteria.
 - The application will generate a dynamic flowchart based on the selection, guiding you through the device provisioning process.
 
+-- Watch "Demo Video.mov" to assist you if needed
+
 ## Project Structure
 
 - **app.py**: The main Flask application file. Handles routing, form submission, querying the database, and rendering HTML templates.
