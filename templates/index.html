@@ -4,337 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Device Provisioning Flowchart</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <style>
-        .carouselimage {
-            blur: 100px;
-            max-width: 25%;
-            height: auto;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-            padding: 5px;
-        }
-    
-        .Advanced-filters {
-            display: none;
-        }
-        .Advanced-filters:onclick {
-            display: block;
-        }
-    
-        .security-recommendations {
-            display: block;
-            outline: 1px dotted black;
-            content: "Security Recommendations";
-            border-radius: 8px;
-            transition: background-color 0.3s;
-        }
-        .security-recommendations:hover {
-            background-color: rgba(200, 200, 200, 0.3);
-            cursor: pointer;
-        }
-    
-        .educational-resources {
-            display: block;
-            outline: 1px dotted black;
-            content: "Educational Resources";
-            border-radius: 8px;
-            transition: background-color 0.3s;
-        }
-        .educational-resources:hover {
-            background-color: rgba(200, 200, 200, 0.3);
-            cursor: pointer;
-        }
-    
-        .device-carousel {
-            display: flex;
-            overflow-x: auto;
-            scroll-behavior: smooth;
-            white-space: nowrap;
-        }
-    
-        .device-card-result {
-            flex: 1 1 calc(25% - 20px);
-            text-align: center;
-            position: relative;
-            display: inline-block;
-            height: auto;
-            white-space: normal;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            box-sizing: border-box;
-            background-color: gray;
-            box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
-            padding: 10px 20px;
-            transition: background-color 0.3s, box-shadow 0.3s;
-        }
-    
-        .device-card-carousel {
-            text-align: center;
-            position: relative;
-            display: inline-block;
-            max-width: 5%;
-            height: auto;
-            white-space: normal;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            box-sizing: border-box;
-            background-color: gray;
-            box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
-            padding: 10px 20px;
-            transition: background-color 0.3s, box-shadow 0.3s;
-        }
-    
-        .device-cards-container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            padding: 20px;
-            gap: 20px;
-        }
-    
-        .device-info {
-            display: none;
-            position: absolute;
-            background-color: black;
-            color: white;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            padding: 10px;
-        }
-        .device-card-carousel:hover .device-info {
-            display: block;
-            background-color: white;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-    
-        body {
-            font-family: Arial, sans-serif;
-            transition: background-color 0.3s, color 0.3s;
-        }
-        .dark-mode {
-            background-color: black;
-            color: white;
-        }
-        .light-mode {
-            background-color: rgba(255,255,255,.4);
-            color: black;
-        }
-    
-        .container {
-            width: 80%;
-            margin: auto;
-            padding: 20px;
-            text-align: center;
-        }
-        .form-container {
-            display: none;
-            border: 2px dotted #000;
-            border-radius: 15px;
-            padding: 20px;
-            background-color: rgba(252,220,148,.4);
-            transition: background 3s;
-        }
-        .form-container:hover {
-            background-color: rgba(239,156,102,.4);
-            transition: background 3s;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-        }
-        select, input {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-        }
-        button {
-            padding: 10px 15px;
-            background-color: #28a745;
-            color: #fff;
-            border: none;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #218838;
-        }
-        .device-card-carousel {
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 15px;
-            margin: 10px;
-            display: inline-block;
-            width: 30%;
-            box-sizing: border-box;
-            transition: transform 0.2s;
-        }
-        .device-card-carousel:hover {
-            transform: scale(1.05);
-        }
-        .device-card-result {
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 15px;
-            margin: 10px;
-            display: inline-block;
-            width: 30%;
-            box-sizing: border-box;
-            transition: transform 0.2s;
-        }
-        .device-card h3 {
-            margin-top: 0;
-        }
-        .alert {
-            color: red;
-            font-weight: bold;
-        }
-        .toggle-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        .toggle-label {
-            margin-right: 10px;
-        }
-        .toggle-checkbox {
-            display: none;
-        }
-        .toggle-label::before {
-            content: '☀️';
-        }
-        .toggle-checkbox:checked + .toggle-label::before {
-            content: '🌙';
-        }
-        .form-results {
-            width: 80%;
-            margin: auto;
-            padding: 20px;
-            text-align: center;
-        }
-        .security-recommendations {
-            width: 80%;
-            margin: auto;
-            padding: 20px;
-            text-align: center;
-        }
-        .educational-resources {
-            width: 80%;
-            margin: auto;
-            padding: 20px;
-            text-align: center;
-        }
-    
-        @media (max-width: 1200px) {
-            .device-card-result {
-                flex: 1 1 calc(33.333% - 20px); /* Three cards per row */
-            }
-        }
-        
-        @media (max-width: 900px) {
-            .device-card-result {
-                flex: 1 1 calc(50% - 20px); /* Two cards per row */
-            }
-        }
-        
-        @media (max-width: 600px) {
-            .device-card-result {
-                flex: 1 1 calc(100% - 20px); /* One card per row */
-            }
-        }
-    
-        @media only screen and (max-width: 768px) {
-            .device-card-carousel {
-                width: 100%;
-            }
-            .device-card-result {
-                min-width: 25%;
-            }
-            .reccomended-device-containers {
-                display: block;
-            }
-            .form-container {
-                width: 100%;
-            }
-            .container {
-                width: 100%;
-            }
-            .form-results {
-                width: 100%;
-            }
-            .security-recommendations {
-                width: 100%;
-            }
-            .educational-resources {
-                width: 100%;
-            }
-        }
-    </style>    
-    <script>
-        function switchTheme() {
-            const body = document.querySelector('body');
-            body.classList.toggle('dark-mode');
-            body.classList.toggle('light-mode');
-            if (body.classList.contains('dark-mode')) {
-                body.style.image = "background-image: url('{{dark_mode_image}}')";
-            } else {
-                body.style.image = "background-image: url('{{light_mode_image}}')";
-            }
-        }
-        
-        const toggleSwitch = document.querySelector('.toggle-checkbox');
-        toggleSwitch.addEventListener('change', switchTheme());
-
-        function OPEN(){
-            var x = document.getElementsByClassName("Advanced-filters");
-            var i;
-            for (i = 0; i < x.length; i++) {
-                if (x[i].style.display === "none") {
-                    x[i].style.display = "block";
-                    x.innerHTML = "Close Advanced Filters";
-                } else {
-                    x[i].style.display = "none";
-                    x.innerHTML = "Open Advanced Filters";
-                }
-            }
-        }
-
-        function checkStandards() {
-            const cpuSpeed = document.getElementById('cpu_speed').value;
-            const ram = document.getElementById('ram').value;
-            const storage = document.getElementById('storage').value;
-            const screenSize = document.getElementById('screen_size').value;
-
-            const minCpuSpeed = 3.0;
-            const minRam = 8;
-            const minStorage = 256;
-            const minScreenSize = 9;
-
-            let alertMessage = '';
-            if (cpuSpeed < minCpuSpeed) alertMessage += 'CPU Speed below recommended standards.\n';
-            if (ram < minRam) alertMessage += 'RAM below recommended standards.\n';
-            if (storage < minStorage) alertMessage += 'Storage below recommended standards.\n';
-            if (screenSize < minScreenSize) alertMessage += 'Screen Size below recommended standards.\n';
-
-            if (alertMessage) alert(alertMessage);
-        }
-    </script>
+        .form-container{display:none;}
+        .carouselimage{max-width:100%;height:auto;}
+    </style>
 </head>
 <body class="light_mode" style="background-image: url('{{light_mode_image}}')">
-    <div class="toggle-container">
-        <label for="toggle" class="toggle-label">Dark Mode</label>
-        <input type="checkbox" id="toggle" class="toggle-checkbox">
-        <label for="toggle" class="toggle-label"></label>
-    </div>
-    <div class="container">
+    <div class="container my-4">
         <h1><ul>Device Provisioning Flowchart</ul></h1>
-        <button id='openbutton' onclick="document.getElementById('device-form').style.display='block'">Open Form</button>
-        <div id="device-form" class="form-container">
+        <button id='openbutton' class='btn btn-primary' onclick="document.getElementById('device-form').style.display='block'">Open Form</button>
+        <div id="device-form" class="form-container shadow bg-white p-4 rounded">
             <form action="{{ url_for('index')}}" method="POST" onsubmit="checkStandards()">
                 <div class="container">
                     <!-- Search Bar -->
@@ -366,7 +47,7 @@
                         }
                         updatePriceRangeValue();
                     </script>
-                    <button type="button" id='advFilters' onclick=OPEN()>Advanced Filters</button>
+                    <button type="button" id='advFilters' class='btn btn-link' onclick=OPEN()>Advanced Filters</button>
                         <div class="Advanced-filters">
                             <div class="Advanced-filters">
                                 <label for="use">Use:</label>
@@ -407,10 +88,10 @@
                             </div>
                         </div>
                         <div>
-                            <button id='closebutton' onclick="document.getElementById('device-form').style.display='none'">Close Form</button>
+                            <button id='closebutton' class='btn btn-secondary' onclick="document.getElementById('device-form').style.display='none'">Close Form</button>
                         </div>
                         <div>
-                        <button id='submitForm' type="submit" onclick=submitForm()>Show Results</button>
+                        <button id='submitForm' class='btn btn-success' type="submit" onclick=submitForm()>Show Results</button>
                         </div>
                     </div>
                 </form>
@@ -421,7 +102,7 @@
             <div class="device-carousel">
                 <div class="recommended-device-containers">
                     {% for device in recommended_devices %}
-                        <div class="device-card-carousel" onclick="window.location.href='{{ url_for('device', device_id=device.id) }}'">
+                        <div class="device-card-carousel card card-hover p-3 text-center" onclick="window.location.href='{{ url_for('device', device_id=device.id) }}'">
                             <img src="{{ device.image }}" class="carouselimage">
                             <h3><ul>Device Name: {{ device.name }}</ul></h3>
                             <p>Device Name: {{ device.name }}</p>
@@ -446,7 +127,7 @@
         <p>Displaying devices based on the selected criteria.</p>
         <div class="device-container">
             {% for device in devices %}
-                <div class="device-card-result" onclick="{{ url_for('device', device_id=device.id) }}'">
+                <div class="device-card-result card card-hover p-3 m-2" onclick="{{ url_for('device', device_id=device.id) }}'">
                     <img src="{{ device.image }}" class="carouselimage">
                     <h3>{{ device.name }}</h3>
                     <p>Category: {{ device.category }}</p>
@@ -514,4 +195,5 @@
             }
         }, 100);
 </script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </html>
