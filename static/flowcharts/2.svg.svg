@@ -11,8 +11,8 @@
 <!-- A -->
 <g id="node1" class="node">
 <title>A</title>
-<ellipse fill="none" stroke="black" cx="1744.4" cy="-162" rx="133.75" ry="18"/>
-<text xml:space="preserve" text-anchor="middle" x="1744.4" y="-156.95" font-family="Times,serif" font-size="14.00">Device: Apple MacBook Air M2</text>
+<ellipse fill="none" stroke="black" cx="1744.4" cy="-162" rx="107.65" ry="18"/>
+<text xml:space="preserve" text-anchor="middle" x="1744.4" y="-156.95" font-family="Times,serif" font-size="14.00">Device: Dell XPS 13 Plus</text>
 </g>
 <!-- B -->
 <g id="node2" class="node">
@@ -23,8 +23,8 @@
 <!-- A&#45;&gt;B -->
 <g id="edge1" class="edge">
 <title>A&#45;&gt;B</title>
-<path fill="none" stroke="black" d="M1625.3,-153.48C1408.1,-139.75 950.94,-110.87 743.19,-97.75"/>
-<polygon fill="black" stroke="black" points="743.69,-94.27 733.49,-97.13 743.25,-101.26 743.69,-94.27"/>
+<path fill="none" stroke="black" d="M1645.1,-154.73C1437.14,-141.59 957.45,-111.28 743.17,-97.75"/>
+<polygon fill="black" stroke="black" points="743.63,-94.27 733.43,-97.13 743.19,-101.25 743.63,-94.27"/>
 </g>
 <!-- C -->
 <g id="node3" class="node">
@@ -35,8 +35,8 @@
 <!-- A&#45;&gt;C -->
 <g id="edge2" class="edge">
 <title>A&#45;&gt;C</title>
-<path fill="none" stroke="black" d="M1863.34,-153.49C2087.55,-139.34 2567.89,-109.02 2765.61,-96.54"/>
-<polygon fill="black" stroke="black" points="2765.81,-100.04 2775.57,-95.91 2765.37,-93.05 2765.81,-100.04"/>
+<path fill="none" stroke="black" d="M1843.79,-154.73C2058.51,-141.17 2562.67,-109.35 2766.05,-96.51"/>
+<polygon fill="black" stroke="black" points="2765.99,-100.02 2775.75,-95.9 2765.55,-93.04 2765.99,-100.02"/>
 </g>
 <!-- S1 -->
 <g id="node4" class="node">

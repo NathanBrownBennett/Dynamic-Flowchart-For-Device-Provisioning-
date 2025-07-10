@@ -4,9 +4,183 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Device Provisioning Toolkit</title>
+    <link rel="stylesheet" href="{% static 'style.css' %}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <script>
+        // Theme switching functionality
+        function switchTheme() {
+            const body = document.querySelector('body');
+            const isCurrentlyDark = body.style.background.includes('linear-gradient(135deg, #2c3e50');
+            
+            if (isCurrentlyDark) {
+                body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            } else {
+                body.style.background = 'linear-gradient(135deg, #2c3e50 0%, #34495e 100%)';
+            }
+        }
+
+        // Form visibility and advanced filters
+        function toggleForm() {
+            const formContainer = document.getElementById('device-form');
+            const isVisible = formContainer.style.display === 'block';
+            
+            if (isVisible) {
+                formContainer.style.display = 'none';
+            } else {
+                formContainer.style.display = 'block';
+                formContainer.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        function toggleAdvancedFilters() {
+            const advancedFilters = document.getElementById('advanced-filters');
+            const toggleBtn = document.getElementById('advanced-toggle-btn');
+            
+            if (advancedFilters.classList.contains('show')) {
+                advancedFilters.classList.remove('show');
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i> Show Advanced Filters';
+            } else {
+                advancedFilters.classList.add('show');
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i> Hide Advanced Filters';
+            }
+        }
+
+        // User type selection
+        function selectUserType(type) {
+            document.querySelectorAll('.user-type-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            
+            document.querySelector(`[data-user-type="${type}"]`).classList.add('active');
+            document.getElementById('use').value = type;
+            
+            // Auto-populate recommendations based on user type
+            updateRecommendations(type);
+        }
+
+        function updateRecommendations(userType) {
+            const recommendations = {
+                'Personal': {
+                    'price_range_min': 400,
+                    'price_range_max': 1200,
+                    'ram': 8,
+                    'storage': 256
+                },
+                'Work': {
+                    'price_range_min': 800,
+                    'price_range_max': 2000,
+                    'ram': 16,
+                    'storage': 512
+                },
+                'Government': {
+                    'price_range_min': 1000,
+                    'price_range_max': 3000,
+                    'ram': 32,
+                    'storage': 1000
+                }
+            };
+
+            const rec = recommendations[userType];
+            if (rec) {
+                document.getElementById('price_range_min').value = rec.price_range_min;
+                document.getElementById('price_range_max').value = rec.price_range_max;
+                document.getElementById('ram').value = rec.ram;
+                document.getElementById('storage').value = rec.storage;
+                updateAllRangeValues();
+            }
+        }
+
+        // Range slider updates
+        function updatePriceRangeValue() {
+            const minPrice = document.getElementById('price_range_min').value;
+            const maxPrice = document.getElementById('price_range_max').value;
+            document.getElementById('price_range_min_value').textContent = minPrice;
+            document.getElementById('price_range_max_value').textContent = maxPrice;
+        }
+
+        function updateRangeValue(sliderId, displayId, suffix = '') {
+            const slider = document.getElementById(sliderId);
+            const display = document.getElementById(displayId);
+            if (slider && display) {
+                display.textContent = slider.value + suffix;
+            }
+        }
+
+        function updateAllRangeValues() {
+            updatePriceRangeValue();
+            updateRangeValue('cpu_speed', 'cpu_speed_value', ' GHz');
+            updateRangeValue('ram', 'ram_value', ' GB');
+            updateRangeValue('storage', 'storage_value', ' GB');
+            updateRangeValue('screen_size', 'screen_size_value', '"');
+            updateRangeValue('cores', 'cores_value', ' cores');
+            updateRangeValue('threads', 'threads_value', ' threads');
+        }
+
+        function checkStandards() {
+            const cpuSpeed = document.getElementById('cpu_speed').value;
+            const ram = document.getElementById('ram').value;
+            const storage = document.getElementById('storage').value;
+            const screenSize = document.getElementById('screen_size').value;
+
+            const minCpuSpeed = 3.0;
+            const minRam = 8;
+            const minStorage = 256;
+            const minScreenSize = 9;
+
+            let alertMessage = '';
+            if (cpuSpeed < minCpuSpeed) alertMessage += 'CPU Speed below recommended standards.\n';
+            if (ram < minRam) alertMessage += 'RAM below recommended standards.\n';
+            if (storage < minStorage) alertMessage += 'Storage below recommended standards.\n';
+            if (screenSize < minScreenSize) alertMessage += 'Screen Size below recommended standards.\n';
+
+            if (alertMessage) alert(alertMessage);
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateAllRangeValues();
+            
+            // Refresh devices functionality
+            const refreshBtn = document.getElementById('refresh-devices-btn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function() {
+                    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+                    refreshBtn.disabled = true;
+                    
+                    fetch('/refresh-devices', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert(`Successfully refreshed ${data.count} devices! Page will reload.`);
+                            location.reload();
+                        } else {
+                            alert('Error refreshing devices: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error refreshing devices. Check console for details.');
+                    })
+                    .finally(() => {
+                        refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Device Data';
+                        refreshBtn.disabled = false;
+                    });
+                });
+            }
+
+            // Theme toggle
+            const themeToggle = document.getElementById('theme-toggle');
+            if (themeToggle) {
+                themeToggle.addEventListener('change', switchTheme);
+            }
+        });
+    </script>
 </head>
 <body>
     <!-- Theme Toggle -->
@@ -267,9 +441,7 @@
             <div class="recommended-device-containers">
                 {% for device in recommended_devices %}
                     <div class="device-card-carousel" onclick="window.location.href='{{ url_for('device', device_id=device.id) }}'">
-                        <img src="{{ device.image }}" class="carouselimage" alt="{{ device.name }}" 
-                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                        <div class="carouselimage" style="display:none;">📱<br>Device Image</div>
+                        <img src="{{ device.image }}" class="carouselimage" alt="{{ device.name }}">
                         <div class="device-card-content">
                             <div class="device-title">{{ device.name }}</div>
                             <div class="device-specs">
@@ -300,9 +472,7 @@
             <div class="device-container">
                 {% for device in devices %}
                     <div class="device-card-result" onclick="window.location.href='{{ url_for('device', device_id=device.id) }}'">
-                        <img src="{{ device.image }}" class="carouselimage" alt="{{ device.name }}"
-                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                        <div class="carouselimage" style="display:none;">📱<br>Device Image</div>
+                        <img src="{{ device.image }}" class="carouselimage" alt="{{ device.name }}">
                         <div class="device-card-content">
                             <div class="device-title">{{ device.name }}</div>
                             <div class="device-specs">
@@ -321,7 +491,6 @@
     </div>
     {% endif %}
     
-    <script src="{{ url_for('static', filename='index.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -3,44 +3,659 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Device Details</title>
+    <title>{{ device.name }} - Device Provisioning Toolkit</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .hero-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 3rem 0;
+            border-radius: 0 0 20px 20px;
+        }
+        .device-image {
+            max-width: 300px;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .spec-card {
+            background: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        .spec-card:hover {
+            transform: translateY(-5px);
+        }
+        .security-step {
+            background: #e8f5e8;
+            border-left: 4px solid #28a745;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 0 10px 10px 0;
+        }
+        .comparison-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+        .comparison-card:hover {
+            border-color: #007bff;
+            transform: scale(1.02);
+        }
+        .buy-button {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            color: white;
+            font-weight: bold;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        .buy-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+            color: white;
+        }
+        .nav-tabs .nav-link.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .security-icon {
+            color: #28a745;
+            margin-right: 10px;
+        }
+        .warning-icon {
+            color: #ffc107;
+            margin-right: 10px;
+        }
+        .price-tag {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+    </style>
 </head>
-<body class="light-mode">
-    <div class="container">
-        <div class="device-card card card-hover p-4 text-center my-4">
-            <img src="{{ device.image }}" class="device_image">
-            <h3>Device Name: {{ device.name }}</h3>
-            <p>Category: {{ device.category }}</p>
-            <p>CPU Speed: {{ device.cpu_speed }} GHz</p>
-            <p>RAM: {{ device.ram }} GB</p>
-            <p>Storage: {{ device.storage }} GB</p>
-            <p>Screen Size: {{ device.screen_size }} inches</p>
-            <p>Price: £{{ device.price }}</p>
-            <button onclick="window.history.back()">Go Back</button>
+<body>
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-4 text-center">
+                    <img src="{{ device.image }}" class="device-image" alt="{{ device.name }}">
+                </div>
+                <div class="col-md-8">
+                    <h1 class="display-4 fw-bold">{{ device.name }}</h1>
+                    <p class="lead">{{ device.category }} • Secure & Verified</p>
+                    <div class="price-tag d-inline-block">£{{ device.price }}</div>
+                    <div class="mt-3">
+                        <span class="badge bg-success me-2"><i class="fas fa-shield-alt"></i> Security Verified</span>
+                        <span class="badge bg-info me-2"><i class="fas fa-certificate"></i> Enterprise Ready</span>
+                        <span class="badge bg-warning"><i class="fas fa-bolt"></i> Latest Hardware</span>
+                    </div>
+                </div>
+            </div>
         </div>
-        <iframe id="flowchartIframe" src="{{ url_for('serve_flowchart', image_path=flowchart_image_path) }}" width="800" height="600" style="display:none;"></iframe>
-        <button onclick="toggleFlowchart()">Show Flowchart</button>
-        <button onclick="downloadFlowchart()">Download Flowchart</button>
     </div>
+
+    <div class="container my-5">
+        <!-- Navigation Tabs -->
+        <ul class="nav nav-tabs mb-4" id="deviceTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab">
+                    <i class="fas fa-info-circle"></i> Overview
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="security-tab" data-bs-toggle="tab" data-bs-target="#security" type="button" role="tab">
+                    <i class="fas fa-shield-alt"></i> Security Guide
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="compare-tab" data-bs-toggle="tab" data-bs-target="#compare" type="button" role="tab">
+                    <i class="fas fa-balance-scale"></i> Compare
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="purchase-tab" data-bs-toggle="tab" data-bs-target="#purchase" type="button" role="tab">
+                    <i class="fas fa-shopping-cart"></i> Purchase
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" id="deviceTabContent">
+            <!-- Overview Tab -->
+            <div class="tab-pane fade show active" id="overview" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="spec-card">
+                            <h4><i class="fas fa-microchip text-primary"></i> Performance Specifications</h4>
+                            <div class="row">
+                                <div class="col-6">
+                                    <strong>Processor:</strong><br>
+                                    {{ device.cpu_speed }} GHz
+                                    {% if device.cpu_speed >= 3.5 %}
+                                    <span class="badge bg-success">High Performance</span>
+                                    {% elif device.cpu_speed >= 3.0 %}
+                                    <span class="badge bg-info">Good Performance</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">Basic Performance</span>
+                                    {% endif %}
+                                </div>
+                                <div class="col-6">
+                                    <strong>Memory:</strong><br>
+                                    {{ device.ram }} GB RAM
+                                    {% if device.ram >= 16 %}
+                                    <span class="badge bg-success">Professional</span>
+                                    {% elif device.ram >= 8 %}
+                                    <span class="badge bg-info">Standard</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">Basic</span>
+                                    {% endif %}
+                                </div>
+                                <div class="col-6 mt-3">
+                                    <strong>Storage:</strong><br>
+                                    {{ device.storage }} GB SSD
+                                    {% if device.storage >= 512 %}
+                                    <span class="badge bg-success">Ample Space</span>
+                                    {% else %}
+                                    <span class="badge bg-info">Sufficient</span>
+                                    {% endif %}
+                                </div>
+                                <div class="col-6 mt-3">
+                                    <strong>Display:</strong><br>
+                                    {{ device.screen_size }}" Screen
+                                    {% if device.screen_size >= 15 %}
+                                    <span class="badge bg-success">Large</span>
+                                    {% elif device.screen_size >= 13 %}
+                                    <span class="badge bg-info">Standard</span>
+                                    {% else %}
+                                    <span class="badge bg-info">Compact</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="spec-card">
+                            <h4><i class="fas fa-award text-success"></i> Why This Device?</h4>
+                            <ul class="list-unstyled">
+                                {% if device.ram >= 16 %}
+                                <li><i class="fas fa-check-circle text-success"></i> Excellent multitasking with 16GB+ RAM</li>
+                                {% endif %}
+                                {% if device.cpu_speed >= 3.5 %}
+                                <li><i class="fas fa-check-circle text-success"></i> High-performance processor for demanding tasks</li>
+                                {% endif %}
+                                {% if device.storage >= 512 %}
+                                <li><i class="fas fa-check-circle text-success"></i> Ample storage with fast SSD technology</li>
+                                {% endif %}
+                                <li><i class="fas fa-check-circle text-success"></i> Latest generation hardware</li>
+                                <li><i class="fas fa-check-circle text-success"></i> Enterprise-grade security features</li>
+                                <li><i class="fas fa-check-circle text-success"></i> Compatible with modern business software</li>
+                                {% if 'Windows' in device.name or 'Surface' in device.name %}
+                                <li><i class="fas fa-check-circle text-success"></i> Pre-installed Windows 11 Pro</li>
+                                {% elif 'Mac' in device.name or 'Apple' in device.name %}
+                                <li><i class="fas fa-check-circle text-success"></i> macOS with built-in security</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Security Guide Tab -->
+            <div class="tab-pane fade" id="security" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-12">
+                        <h3><i class="fas fa-shield-alt text-success"></i> Complete Security Setup Guide</h3>
+                        <p class="text-muted mb-4">Follow these steps to ensure your device is properly secured before deployment.</p>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4><i class="security-icon fas fa-cog"></i> Essential Security Settings</h4>
+                        
+                        <div class="security-step">
+                            <h6><i class="fas fa-lock"></i> Enable Full Disk Encryption</h6>
+                            {% if 'Mac' in device.name or 'Apple' in device.name %}
+                            <p>Enable FileVault in System Preferences > Security & Privacy</p>
+                            {% else %}
+                            <p>Enable BitLocker in Control Panel > System and Security</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="security-step">
+                            <h6><i class="fas fa-user-shield"></i> Configure Strong Authentication</h6>
+                            <p>Set up Windows Hello/Touch ID and require complex passwords</p>
+                        </div>
+
+                        <div class="security-step">
+                            <h6><i class="fas fa-sync-alt"></i> Enable Automatic Updates</h6>
+                            <p>Configure automatic security updates for OS and applications</p>
+                        </div>
+
+                        <div class="security-step">
+                            <h6><i class="fas fa-wifi"></i> Secure Network Settings</h6>
+                            <p>Disable auto-connect to open networks and enable firewall</p>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h4><i class="security-icon fas fa-download"></i> Recommended Security Software</h4>
+                        
+                        <div class="security-step">
+                            <h6><i class="fas fa-virus"></i> Enterprise Antivirus</h6>
+                            <ul class="mb-0">
+                                <li>Windows Defender (Built-in) - Recommended</li>
+                                <li>Bitdefender GravityZone - Enterprise</li>
+                                <li>CrowdStrike Falcon - Advanced</li>
+                            </ul>
+                        </div>
+
+                        <div class="security-step">
+                            <h6><i class="fas fa-key"></i> Password Management</h6>
+                            <ul class="mb-0">
+                                <li>Microsoft Authenticator</li>
+                                <li>1Password Business</li>
+                                <li>Bitwarden Enterprise</li>
+                            </ul>
+                        </div>
+
+                        <div class="security-step">
+                            <h6><i class="fas fa-cloud"></i> Backup & Recovery</h6>
+                            <ul class="mb-0">
+                                <li>OneDrive for Business</li>
+                                <li>Veeam Backup</li>
+                                <li>Acronis Cyber Backup</li>
+                            </ul>
+                        </div>
+
+                        <div class="security-step">
+                            <h6><i class="fas fa-eye"></i> Monitoring & Compliance</h6>
+                            <ul class="mb-0">
+                                <li>Microsoft Intune (MDM)</li>
+                                <li>System monitoring tools</li>
+                                <li>Compliance reporting</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Additional Security Considerations -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="spec-card">
+                            <h4><i class="warning-icon fas fa-exclamation-triangle"></i> Important Security Considerations</h4>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>Physical Security</h6>
+                                    <ul>
+                                        <li>Enable screen lock with short timeout</li>
+                                        <li>Use cable locks in shared spaces</li>
+                                        <li>Consider privacy screens for sensitive work</li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>Data Protection</h6>
+                                    <ul>
+                                        <li>Regular automated backups</li>
+                                        <li>Encrypt sensitive documents</li>
+                                        <li>Use VPN for remote connections</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Compare Tab -->
+            <div class="tab-pane fade" id="compare" role="tabpanel">
+                <h3><i class="fas fa-balance-scale text-primary"></i> Device Comparison</h3>
+                <p class="text-muted mb-4">Compare this device with similar options to make an informed decision.</p>
+                
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="spec-card">
+                            <h5>Quick Comparison Filters</h5>
+                            <div class="row mb-3">
+                                <div class="col-md-3">
+                                    <label class="form-label">Category</label>
+                                    <select class="form-select" id="compareCategory">
+                                        <option value="same">Same Category ({{ device.category }})</option>
+                                        <option value="all">All Categories</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Price Range</label>
+                                    <select class="form-select" id="comparePriceRange">
+                                        <option value="similar">Similar Price (±£200)</option>
+                                        <option value="lower">Lower Price</option>
+                                        <option value="higher">Higher Price</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Performance</label>
+                                    <select class="form-select" id="comparePerformance">
+                                        <option value="similar">Similar Performance</option>
+                                        <option value="higher">Higher Performance</option>
+                                        <option value="all">All Performance Levels</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <button class="btn btn-primary mt-4" onclick="loadComparison()">
+                                        <i class="fas fa-search"></i> Find Alternatives
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="comparisonResults">
+                    <!-- Comparison results will be loaded here -->
+                    <div class="text-center text-muted">
+                        <i class="fas fa-search fa-3x mb-3"></i>
+                        <p>Click "Find Alternatives" to see comparable devices</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Purchase Tab -->
+            <div class="tab-pane fade" id="purchase" role="tabpanel">
+                <h3><i class="fas fa-shopping-cart text-success"></i> Purchase Options</h3>
+                <p class="text-muted mb-4">Get the best deals from verified retailers with warranty and support.</p>
+                
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="spec-card">
+                            <h5><i class="fas fa-store"></i> Authorized Retailers</h5>
+                            <div class="retailer-list">
+                                <!-- Amazon -->
+                                <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                                    <div>
+                                        <strong>Amazon UK</strong>
+                                        <br><small class="text-muted">Fast delivery • Easy returns • Prime eligible</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="h5 text-success mb-1">£{{ device.price }}</div>
+                                        <a href="https://amazon.co.uk/s?k={{ device.name | urlencode }}" class="buy-button" target="_blank">
+                                            <i class="fas fa-external-link-alt"></i> Buy on Amazon
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <!-- Currys -->
+                                <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                                    <div>
+                                        <strong>Currys PC World</strong>
+                                        <br><small class="text-muted">Click & Collect • Extended warranty available</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="h5 text-success mb-1">£{{ device.price + 50 }}</div>
+                                        <a href="https://currys.co.uk/search?q={{ device.name | urlencode }}" class="buy-button" target="_blank">
+                                            <i class="fas fa-external-link-alt"></i> Buy at Currys
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <!-- John Lewis -->
+                                <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                                    <div>
+                                        <strong>John Lewis & Partners</strong>
+                                        <br><small class="text-muted">2-year guarantee • Excellent customer service</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="h5 text-success mb-1">£{{ device.price + 25 }}</div>
+                                        <a href="https://johnlewis.com/search?search-term={{ device.name | urlencode }}" class="buy-button" target="_blank">
+                                            <i class="fas fa-external-link-alt"></i> Buy at John Lewis
+                                        </a>
+                                    </div>
+                                </div>
+
+                                {% if 'Apple' in device.name or 'Mac' in device.name or 'iPad' in device.name %}
+                                <!-- Apple Store -->
+                                <div class="d-flex justify-content-between align-items-center p-3">
+                                    <div>
+                                        <strong>Apple Store</strong>
+                                        <br><small class="text-muted">Official warranty • AppleCare+ available</small>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="h5 text-success mb-1">£{{ device.price }}</div>
+                                        <a href="https://apple.com/uk/shop/buy-{{ device.category.lower() }}" class="buy-button" target="_blank">
+                                            <i class="fas fa-external-link-alt"></i> Buy from Apple
+                                        </a>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="spec-card">
+                            <h5><i class="fas fa-info-circle"></i> Purchase Checklist</h5>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="warranty">
+                                <label class="form-check-label" for="warranty">
+                                    Extended warranty considered
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="accessories">
+                                <label class="form-check-label" for="accessories">
+                                    Essential accessories identified
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="support">
+                                <label class="form-check-label" for="support">
+                                    Support options reviewed
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="budget">
+                                <label class="form-check-label" for="budget">
+                                    Budget approved
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="spec-card">
+                            <h5><i class="fas fa-tools"></i> Recommended Accessories</h5>
+                            <ul class="list-unstyled">
+                                {% if device.category == 'Laptops' %}
+                                <li><i class="fas fa-mouse text-primary"></i> Wireless mouse</li>
+                                <li><i class="fas fa-keyboard text-primary"></i> External keyboard</li>
+                                <li><i class="fas fa-briefcase text-primary"></i> Laptop bag/case</li>
+                                <li><i class="fas fa-plug text-primary"></i> Power adapter</li>
+                                {% elif device.category == 'Tablet' %}
+                                <li><i class="fas fa-keyboard text-primary"></i> Bluetooth keyboard</li>
+                                <li><i class="fas fa-pen text-primary"></i> Stylus pen</li>
+                                <li><i class="fas fa-tablet-alt text-primary"></i> Protective case</li>
+                                <li><i class="fas fa-charging-station text-primary"></i> Charging dock</li>
+                                {% else %}
+                                <li><i class="fas fa-desktop text-primary"></i> Monitor</li>
+                                <li><i class="fas fa-keyboard text-primary"></i> Keyboard & mouse</li>
+                                <li><i class="fas fa-volume-up text-primary"></i> Speakers</li>
+                                <li><i class="fas fa-camera text-primary"></i> Webcam</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="row mt-4">
+            <div class="col-12 text-center">
+                <button onclick="window.history.back()" class="btn btn-outline-primary btn-lg me-3">
+                    <i class="fas fa-arrow-left"></i> Back to Search
+                </button>
+                <button onclick="window.print()" class="btn btn-outline-secondary btn-lg me-3">
+                    <i class="fas fa-print"></i> Print Guide
+                </button>
+                <button onclick="downloadSecurityChecklist()" class="btn btn-success btn-lg">
+                    <i class="fas fa-download"></i> Download Security Checklist
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function toggleFlowchart() {
-            const iframe = document.getElementById('flowchartIframe');
-            if (iframe.style.display === "none") {
-                iframe.style.display = "block";
-            } else {
-                iframe.style.display = "none";
-            }
+        function loadComparison() {
+            const category = document.getElementById('compareCategory').value;
+            const priceRange = document.getElementById('comparePriceRange').value;
+            const performance = document.getElementById('comparePerformance').value;
+            
+            // Show loading
+            document.getElementById('comparisonResults').innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Finding comparable devices...</p>
+                </div>
+            `;
+            
+            // Fetch comparison data
+            fetch('/compare-devices', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    deviceId: {{ device.id }},
+                    category: category,
+                    priceRange: priceRange,
+                    performance: performance
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayComparisonResults(data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('comparisonResults').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Error loading comparison data. Please try again.
+                    </div>
+                `;
+            });
         }
 
-        function downloadFlowchart() {
-            const link = document.createElement('a');
-            link.href = document.getElementById('flowchartIframe').src;
-            link.download = 'flowchart.svg';
-            link.click();
+        function displayComparisonResults(devices) {
+            if (devices.length === 0) {
+                document.getElementById('comparisonResults').innerHTML = `
+                    <div class="text-center text-muted">
+                        <i class="fas fa-search fa-3x mb-3"></i>
+                        <p>No comparable devices found with your criteria</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="row">';
+            devices.forEach(device => {
+                html += `
+                    <div class="col-md-6 mb-3">
+                        <div class="comparison-card">
+                            <div class="row align-items-center">
+                                <div class="col-4">
+                                    <img src="${device.image}" class="img-fluid rounded" style="max-height: 80px;">
+                                </div>
+                                <div class="col-8">
+                                    <h6>${device.name}</h6>
+                                    <small class="text-muted">${device.category}</small>
+                                    <div class="mt-2">
+                                        <span class="badge bg-primary">${device.cpu_speed} GHz</span>
+                                        <span class="badge bg-info">${device.ram}GB RAM</span>
+                                        <span class="badge bg-success">£${device.price}</span>
+                                    </div>
+                                    <div class="mt-2">
+                                        <a href="/device/${device.id}" class="btn btn-sm btn-outline-primary">View Details</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            document.getElementById('comparisonResults').innerHTML = html;
+        }
+
+        function downloadSecurityChecklist() {
+            // Create a comprehensive security checklist PDF or text file
+            const content = `
+DEVICE SECURITY CHECKLIST - ${document.querySelector('.display-4').textContent}
+
+INITIAL SETUP:
+□ Enable full disk encryption
+□ Set up strong authentication (Windows Hello/Touch ID)
+□ Configure complex passwords
+□ Enable automatic updates
+□ Install latest OS updates
+
+SECURITY SOFTWARE:
+□ Install enterprise antivirus
+□ Set up password manager
+□ Configure backup solution
+□ Install monitoring tools
+
+NETWORK SECURITY:
+□ Disable auto-connect to open networks
+□ Enable firewall
+□ Configure VPN for remote access
+□ Set up secure Wi-Fi profiles
+
+PHYSICAL SECURITY:
+□ Enable screen lock with short timeout
+□ Consider privacy screens
+□ Implement cable locks if needed
+□ Secure physical access to device
+
+ONGOING MAINTENANCE:
+□ Regular security updates
+□ Periodic security scans
+□ Backup verification
+□ Access review and cleanup
+
+Generated by Device Provisioning Toolkit
+            `;
+            
+            const element = document.createElement('a');
+            element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(content));
+            element.setAttribute('download', 'security-checklist.txt');
+            element.style.display = 'none';
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
         }
     </script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

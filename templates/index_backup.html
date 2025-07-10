@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Provisioning Toolkit</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2c5aa0;
+            --secondary-color: #28a745;
+            --accent-color: #007bff;
+            --warning-color: #ffc107;
+            --background-light: #f8f9fa;
+            --text-dark: #2c3e50;
+            --border-radius: 12px;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: var(--text-dark);
+        }
+
+        .hero-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 3rem 2rem;
+            margin: 2rem auto;
+            max-width: 1200px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .hero-title {
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+
+        .hero-subtitle {
+            font-size: 1.2rem;
+            color: var(--text-dark);
+            margin-bottom: 2rem;
+            opacity: 0.8;
+        }
+
+        .user-types {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin: 2rem 0;
+            flex-wrap: wrap;
+        }
+
+        .user-type-card {
+            background: white;
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            min-width: 200px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+
+        .user-type-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-color);
+            box-shadow: 0 15px 35px rgba(0, 123, 255, 0.2);
+        }
+
+        .user-type-card.active {
+            border-color: var(--secondary-color);
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+        }
+
+        .device-form-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            margin: 2rem auto;
+            max-width: 1200px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            display: none;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .form-header {
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            color: white;
+            padding: 2rem;
+            border-radius: 20px 20px 0 0;
+            text-align: center;
+        }
+
+        .form-content {
+            padding: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            color: var(--text-dark);
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .form-control, .form-select {
+            border-radius: var(--border-radius);
+            border: 2px solid #e9ecef;
+            padding: 0.75rem 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus, .form-select:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+
+        .advanced-filters {
+            display: none;
+            background: #f8f9fa;
+            border-radius: var(--border-radius);
+            padding: 2rem;
+            margin-top: 1rem;
+            border: 2px solid #e9ecef;
+        }
+
+        .advanced-filters.show {
+            display: block;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .carouselimage {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: var(--border-radius);
+            border: 1px solid #ddd;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }        .device-carousel {
+            display: flex;
+            overflow-x: auto;
+            gap: 15px;
+            padding: 20px 0;
+        }
+        
+        .recommended-device-containers {
+            display: flex;
+            gap: 15px;
+            min-width: max-content;
+        }
+        
+        .device-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .device-card-result {
+            flex: 1 1 calc(25% - 20px);
+            text-align: center;
+            position: relative;
+            display: inline-block;
+            height: auto;
+            white-space: normal;
+            border: 1px solid #ddd;
+            border-radius: var(--border-radius);
+            box-sizing: border-box;
+            background: white;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .device-card-carousel {
+            text-align: center;
+            position: relative;
+            display: inline-block;
+            min-width: 280px;
+            height: auto;
+            white-space: normal;
+            border: 1px solid #ddd;
+            border-radius: var(--border-radius);
+            box-sizing: border-box;
+            background: white;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .device-cards-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .device-info {
+            display: none;
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.9);
+            color: white;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 1rem;
+            border-radius: var(--border-radius);
+        }
+
+        .device-card-carousel:hover .device-info {
+            display: block;
+        }
+
+        .device-card-carousel:hover, .device-card-result:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+        }
+        
+        .device-card-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-width: 0;
+        }
+        
+        .device-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin: 8px 0;
+            line-height: 1.3;
+            min-height: 42px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .device-specs {
+            flex-grow: 1;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .device-specs p {
+            margin: 4px 0;
+        }
+        
+        .device-price {
+            font-size: 18px;
+            font-weight: bold;
+            color: #e47911;
+            margin: 10px 0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, var(--accent-color), var(--primary-color));
+            border: none;
+            border-radius: 25px;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 123, 255, 0.3);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, var(--secondary-color), #20c997);
+            border: none;
+            border-radius: 25px;
+            padding: 12px 30px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
+        }
+
+        .range-slider {
+            position: relative;
+            margin: 1rem 0;
+        }
+
+        .range-value {
+            background: var(--accent-color);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+
+        .security-badge {
+            background: linear-gradient(45deg, var(--secondary-color), #20c997);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+
+        .recommendations-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            margin: 2rem auto;
+            max-width: 1200px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+
+        .section-subtitle {
+            color: #666;
+            margin-bottom: 2rem;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        .results-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            margin: 2rem auto;
+            max-width: 1200px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2rem;
+            }
+            
+            .user-types {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .device-card-result, .device-card-carousel {
+                min-width: 100%;
+            }
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background: linear-gradient(45deg, var(--primary-color), var(--accent-color));
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+    </style>
+            display: none;
+            border: 2px dotted #000;
+            border-radius: 15px;
+            padding: 20px;
+            background-color: rgba(252,220,148,.4);
+            transition: background 3s;
+        }
+        .form-container:hover {
+            background-color: rgba(239,156,102,.4);
+            transition: background 3s;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        select, input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #28a745;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        .device-card-carousel {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 0 8px;
+            display: flex;
+            flex-direction: row;
+            width: 280px;
+            height: 140px;
+            min-width: 280px;
+            box-sizing: border-box;
+            transition: transform 0.2s;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            cursor: pointer;
+        }
+        .device-card-carousel:hover {
+            transform: scale(1.05);
+        }
+        
+        .device-card-result:hover {
+            transform: scale(1.02);
+        }
+        
+        .device-card-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-width: 0;
+        }
+        
+        .device-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin: 8px 0;
+            line-height: 1.3;
+            min-height: 42px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .device-specs {
+            flex-grow: 1;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .device-specs p {
+            margin: 4px 0;
+        }
+        
+        .device-price {
+            font-size: 18px;
+            font-weight: bold;
+            color: #e47911;
+            margin: 10px 0;
+        }
+        
+        .carousel-select-button {
+            background-color: #ff9500;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+            font-size: 11px;
+            transition: background-color 0.2s;
+            margin-top: 4px;
+        }
+        
+        .carousel-select-button:hover {
+            background-color: #e88500;
+        }
+        
+        .carousel-select-button a {
+            color: white;
+            text-decoration: none;
+        }
+        
+        .select-button {
+            background-color: #ff9500;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+            margin-top: auto;
+            transition: background-color 0.2s;
+        }
+        
+        .select-button:hover {
+            background-color: #e88500;
+        }
+        
+        .select-button a {
+            color: white;
+            text-decoration: none;
+        }
+        
+        @media (max-width: 1200px) {
+            .device-card-result {
+                width: calc(50% - 20px);
+                max-width: 280px;
+            }
+        }
+        
+        @media (max-width: 900px) {
+            .device-card-result {
+                width: calc(100% - 20px);
+                max-width: 300px;
+            }
+            .device-card-carousel {
+                width: 260px;
+                height: 130px;
+                min-width: 260px;
+            }
+            .carouselimage {
+                width: 80px;
+                height: 80px;
+            }
+            .device-title {
+                font-size: 13px;
+            }
+            .device-specs {
+                font-size: 10px;
+            }
+        }
+        
+        @media (max-width: 600px) {
+            .device-card-result {
+                width: calc(100% - 10px);
+                margin: 5px;
+            }
+            .device-card-carousel {
+                width: 240px;
+                height: 120px;
+                min-width: 240px;
+                padding: 8px;
+            }
+            .carouselimage {
+                width: 70px;
+                height: 70px;
+                margin-right: 8px;
+            }
+            .device-title {
+                font-size: 12px;
+            }
+            .device-specs {
+                font-size: 9px;
+            }
+            .device-price {
+                font-size: 14px;
+            }
+        }
+    
+        @media only screen and (max-width: 768px) {
+            .device-card-carousel {
+                width: 100%;
+            }
+            .device-card-result {
+                min-width: 25%;
+            }
+            .reccomended-device-containers {
+                display: block;
+            }
+            .form-container {
+                width: 100%;
+            }
+            .container {
+                width: 100%;
+            }
+            .form-results {
+                width: 100%;
+            }
+            .security-recommendations {
+                width: 100%;
+            }
+            .educational-resources {
+                width: 100%;
+            }
+        }
+    </style>    
+    <script>
+    <script>
+        // Theme switching functionality
+        function switchTheme() {
+            const body = document.querySelector('body');
+            const isCurrentlyDark = body.style.background.includes('linear-gradient(135deg, #2c3e50');
+            
+            if (isCurrentlyDark) {
+                body.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            } else {
+                body.style.background = 'linear-gradient(135deg, #2c3e50 0%, #34495e 100%)';
+            }
+        }
+
+        // Form visibility and advanced filters
+        function toggleForm() {
+            const formContainer = document.getElementById('device-form');
+            const isVisible = formContainer.style.display === 'block';
+            
+            if (isVisible) {
+                formContainer.style.display = 'none';
+            } else {
+                formContainer.style.display = 'block';
+                formContainer.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        function toggleAdvancedFilters() {
+            const advancedFilters = document.getElementById('advanced-filters');
+            const toggleBtn = document.getElementById('advanced-toggle-btn');
+            
+            if (advancedFilters.classList.contains('show')) {
+                advancedFilters.classList.remove('show');
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i> Show Advanced Filters';
+            } else {
+                advancedFilters.classList.add('show');
+                toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i> Hide Advanced Filters';
+            }
+        }
+
+        // User type selection
+        function selectUserType(type) {
+            document.querySelectorAll('.user-type-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            
+            document.querySelector(`[data-user-type="${type}"]`).classList.add('active');
+            document.getElementById('use').value = type;
+            
+            // Auto-populate recommendations based on user type
+            updateRecommendations(type);
+        }
+
+        function updateRecommendations(userType) {
+            const recommendations = {
+                'Personal': {
+                    'price_range_min': 400,
+                    'price_range_max': 1200,
+                    'ram': 8,
+                    'storage': 256
+                },
+                'Work': {
+                    'price_range_min': 800,
+                    'price_range_max': 2000,
+                    'ram': 16,
+                    'storage': 512
+                },
+                'Government': {
+                    'price_range_min': 1000,
+                    'price_range_max': 3000,
+                    'ram': 32,
+                    'storage': 1000
+                }
+            };
+
+            const rec = recommendations[userType];
+            if (rec) {
+                document.getElementById('price_range_min').value = rec.price_range_min;
+                document.getElementById('price_range_max').value = rec.price_range_max;
+                document.getElementById('ram').value = rec.ram;
+                document.getElementById('storage').value = rec.storage;
+                updateAllRangeValues();
+            }
+        }
+
+        // Range slider updates
+        function updatePriceRangeValue() {
+            const minPrice = document.getElementById('price_range_min').value;
+            const maxPrice = document.getElementById('price_range_max').value;
+            document.getElementById('price_range_min_value').textContent = minPrice;
+            document.getElementById('price_range_max_value').textContent = maxPrice;
+        }
+
+        function updateRangeValue(sliderId, displayId, suffix = '') {
+            const slider = document.getElementById(sliderId);
+            const display = document.getElementById(displayId);
+            if (slider && display) {
+                display.textContent = slider.value + suffix;
+            }
+        }
+
+        function updateAllRangeValues() {
+            updatePriceRangeValue();
+            updateRangeValue('cpu_speed', 'cpu_speed_value', ' GHz');
+            updateRangeValue('ram', 'ram_value', ' GB');
+            updateRangeValue('storage', 'storage_value', ' GB');
+            updateRangeValue('screen_size', 'screen_size_value', '"');
+            updateRangeValue('cores', 'cores_value', ' cores');
+            updateRangeValue('threads', 'threads_value', ' threads');
+        }
+
+        function checkStandards() {
+            const cpuSpeed = document.getElementById('cpu_speed').value;
+            const ram = document.getElementById('ram').value;
+            const storage = document.getElementById('storage').value;
+            const screenSize = document.getElementById('screen_size').value;
+
+            const minCpuSpeed = 3.0;
+            const minRam = 8;
+            const minStorage = 256;
+            const minScreenSize = 9;
+
+            let alertMessage = '';
+            if (cpuSpeed < minCpuSpeed) alertMessage += 'CPU Speed below recommended standards.\n';
+            if (ram < minRam) alertMessage += 'RAM below recommended standards.\n';
+            if (storage < minStorage) alertMessage += 'Storage below recommended standards.\n';
+            if (screenSize < minScreenSize) alertMessage += 'Screen Size below recommended standards.\n';
+
+            if (alertMessage) alert(alertMessage);
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateAllRangeValues();
+            
+            // Refresh devices functionality
+            const refreshBtn = document.getElementById('refresh-devices-btn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function() {
+                    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+                    refreshBtn.disabled = true;
+                    
+                    fetch('/refresh-devices', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert(`Successfully refreshed ${data.count} devices! Page will reload.`);
+                            location.reload();
+                        } else {
+                            alert('Error refreshing devices: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error refreshing devices. Check console for details.');
+                    })
+                    .finally(() => {
+                        refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Device Data';
+                        refreshBtn.disabled = false;
+                    });
+                });
+            }
+
+            // Theme toggle
+            const themeToggle = document.getElementById('theme-toggle');
+            if (themeToggle) {
+                themeToggle.addEventListener('change', switchTheme);
+            }
+        });
+    </script>
+</head>
+<body class="light_mode" style="background-image: url('{{light_mode_image}}')">
+    <div class="container">
+        <h1>Device Provisioning Toolkit</h1>
+        <p style="margin-bottom: 20px; color: #666; font-size: 16px;">
+            Find secure devices tailored to your needs with comprehensive security guidance and procurement assistance
+        </p>
+        <div class="toggle-container">
+            <input type="checkbox" id="theme-toggle" class="toggle-checkbox">
+            <label for="theme-toggle" class="toggle-label"></label>
+            <span>Dark Mode</span>
+        </div>
+        
+        <div style="text-align: center; margin: 20px 0;">
+            <button id="refresh-devices-btn" class="select-button" style="display: inline-block; margin: 0 10px;">
+                🔄 Refresh Device Data
+            </button>
+            <button onclick="OPEN()" class="select-button" style="display: inline-block; margin: 0 10px;">
+                Open Form
+            </button>
+        </div>
+        
+        <div id="device-form" class="form-container">
+            <form action="{{ url_for('index')}}" method="POST" onsubmit="checkStandards()">
+                <div class="container">
+                    <!-- Search Bar -->
+                    <div class="form-group">
+                        <label for="searchBar">Search for a device:</label>
+                        <input type="text" id="searchBar" name="searchBar" placeholder="Search devices..." oninput="saveName(this.value)">
+                        <script>
+                            let searchBar = '';
+                            function saveName(value) {
+                                searchBar = value;
+                                console.log("Search Query:", searchBar); // For demonstration, logs the search query to the console
+                            }
+                        </script>
+                    </div>
+                    <div class="form-group">
+                        <label for="price_range">Price Range (£):</label>
+                        <input type="range" id="price_range_min" name="price_range_min" min="0" max="3000" value="100" oninput="updatePriceRangeValue()">
+                        <input type="range" id="price_range_max" name="price_range_max" min="0" max="3000" value="1500" oninput="updatePriceRangeValue()">
+                        <p>Min: £<span id="price_range_min_value">£100</span> - Max: £<span id="price_range_max_value">£1500</span></p>
+                        <input type="hidden" id="price_range" name="price_range">
+                    </div>
+                    <script>
+                        function updatePriceRangeValue() {
+                            const minPrice = document.getElementById('price_range_min').value;
+                            const maxPrice = document.getElementById('price_range_max').value;
+                            document.getElementById('price_range_min_value').textContent = minPrice;
+                            document.getElementById('price_range_max_value').textContent = maxPrice;
+                            document.getElementById('price_range').value = minPrice + "," + maxPrice;
+                        }
+                        updatePriceRangeValue();
+                    </script>
+                    <button type="button" id='advFilters' onclick=OPEN()>Advanced Filters</button>
+                        <div class="Advanced-filters">
+                            <div class="Advanced-filters">
+                                <label for="use">Use:</label>
+                                <select id="use" name="use">
+                                    <option value="Personal">Personal</option>
+                                    <option value="Work">Work</option>
+                                    <option value="Government">Government</option>
+                                    <option value="Education">Education</option>
+                                </select>
+                            </div>
+                            <div class="Advanced-filters">
+                                <label for="device_type">Device Type:</label>
+                                <select id="device_type" name="device_type">
+                                    <option value="PCs">PCs</option>
+                                    <option value="Laptops">Laptops</option>
+                                    <option value="Tablets">Tablets</option>
+                                </select>
+                            </div>
+                            <div class="Advanced-filters">
+                                <label for="cpu_speed">Minimum CPU Speed (GHz):</label>
+                                <input type="range" id="cpu_speed" name="cpu_speed" min="2.5" max="5" step="0.1" oninput="this.nextElementSibling.value = this.value">
+                                <output>2.5 ghz</output>
+                            </div>
+                            <div class="Advanced-filters">
+                                <label for="ram">Minimum RAM (GB):</label>
+                                <input type="range" id="ram" name="ram" min="8" max="128" step="4" oninput="this.nextElementSibling.value = this.value">
+                                <output>8 gb</output>
+                            </div>
+                            <div class="Advanced-filters">
+                                <label for="storage">Minimum Storage Capacity (GB):</label>
+                                <input type="range" id="storage" name="storage" min="256" max="2000" step="32" oninput="this.nextElementSibling.value = this.value">
+                                <output>256 GB</output>
+                            </div>
+                            <div class="Advanced-filters">
+                                <label for="screen_size">Minimum Screen Size (inches):</label>
+                                <input type="range" id="screen_size" name="screen_size" min="5" max="30" step="1" oninput="this.nextElementSibling.value = this.value">
+                                <output>5 inch</output>
+                            </div>
+                        </div>
+                        <div>
+                            <button id='closebutton' onclick="document.getElementById('device-form').style.display='none'">Close Form</button>
+                        </div>
+                        <div>
+                        <button id='submitForm' type="submit" onclick=submitForm()>Show Results</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <h2>Secure Recommended Devices</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Curated selection of enterprise-grade devices with verified security features and compliance standards
+            </p>
+            <div class="device-carousel">
+                <div class="recommended-device-containers">
+                    {% for device in recommended_devices %}
+                        <div class="device-card-carousel" onclick="window.location.href='{{ url_for('device', device_id=device.id) }}'">
+                            <img src="{{ device.image }}" class="carouselimage" alt="{{ device.name }}">
+                            <div class="device-card-content">
+                                <div class="device-title">{{ device.name }}</div>
+                                <div class="device-specs">
+                                    <p><strong>{{ device.category }}</strong> 
+                                        <span class="badge bg-success" style="font-size: 9px; margin-left: 4px;">🔒 Secure</span>
+                                    </p>
+                                    <p>{{ device.cpu_speed }} GHz • {{ device.ram }}GB • {{ device.storage }}GB</p>
+                                    <p>{{ device.screen_size }}" screen</p>
+                                </div>
+                                <div class="device-price">£{{ device.price }}</div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>  
+    </div>
+<div class="form-results">
+    <h3>Security-Verified Search Results</h3>
+    {% if error_occurred %}
+    <p class="alert alert-danger">There has been an error retrieving results from the database.</p>
+    {% elif form_submitted %}
+        <p style="color: #666; margin-bottom: 20px;">
+            Displaying secure devices that meet your criteria with comprehensive security assessments
+        </p>
+        <div class="device-container">
+            {% for device in devices %}
+                <div class="device-card-result" onclick="window.location.href='{{ url_for('device', device_id=device.id) }}'">
+                    <img src="{{ device.image }}" class="carouselimage" alt="{{ device.name }}">
+                    <div class="device-card-content">
+                        <div class="device-title">{{ device.name }}</div>
+                        <div class="device-specs">
+                            <p><strong>Category:</strong> {{ device.category }}</p>
+                            <p><strong>CPU:</strong> {{ device.cpu_speed }} GHz</p>
+                            <p><strong>RAM:</strong> {{ device.ram }} GB</p>
+                            <p><strong>Storage:</strong> {{ device.storage }} GB</p>
+                            <p><strong>Screen:</strong> {{ device.screen_size }}"</p>
+                        </div>
+                        <div class="device-price">£{{ device.price }}</div>
+                        <div class="select-button">
+                            <a href="{{url_for('device', device_id=device.id)}}">Select Device</a>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+    {% endif %}
+    <p>Submit the form above to see results</p>
+</div>
+<!-- Security Recommendations Section -->
+<div class="security-recommendations">
+    <h2>Security Recommendations</h2>
+    <p>Follow our guidelines to ensure your devices are secure and up-to-date.</p>
+    <ul>
+        <p><a href="https://www.cyberessentials.ncsc.gov.uk/">Cyber Essentials Guidelines</a></p>
+        <p><a href="#device-hardening">Operating System Hardening Steps</a></p>
+        <p><a href="#antivirus">Recommended Antivirus Tools</a></p>
+    </ul>
+</div>
+
+<!-- Educational Resources Section -->
+<div class="educational-resources">
+    <h2>Educational Resources</h2>
+    <p>Explore our modules to learn more about digital literacy and cybersecurity.</p>
+    <ul>
+        <p><a href="#cybersecurity-basics">Cybersecurity Basics</a></p>
+        <p><a href="#best-practices">Best Practices for Device Security</a></p>
+    </ul>
+</div>
+</body>
+<script>
+    function switchTheme() {
+        const body = document.querySelector('body');
+        body.classList.toggle('dark-mode');
+        body.classList.toggle('light-mode');
+        if (body.classList.contains('dark-mode')) {
+            body.style.image.innerHTML = "background-image: url('{{dark_mode_image}}')";
+        } else {
+            body.style.image.innerHTML = "background-image: url('{{light_mode_image}}')";
+        }
+    }
+    
+    const toggleSwitch = document.querySelector('.toggle-checkbox');
+    toggleSwitch.addEventListener('change', switchTheme());
+
+    const carousel = document.querySelector('.device-carousel');
+        let isHovering = false;
+
+        carousel.addEventListener('mouseenter', () => isHovering = true);
+        carousel.addEventListener('mouseleave', () => isHovering = false);
+
+        setInterval(() => {
+            if (!isHovering) {
+                carousel.scrollBy({left: 5, behavior: 'smooth'});
+                if (carousel.scrollWidth - carousel.scrollLeft === carousel.clientWidth) {
+                    carousel.scrollTo({left: 0, behavior: 'smooth'});
+                }
+            }
+        }, 100);
+</script>
+</html>
