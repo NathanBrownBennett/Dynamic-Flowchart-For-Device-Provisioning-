@@ -103,10 +103,14 @@
                 </div>
                 <div class="col-md-8">
                     <h1 class="display-4 fw-bold">{{ device.name }}</h1>
-                    <p class="lead">{{ device.category }} • Secure & Verified</p>
+                    <p class="lead">{{ device.category }} • {{ device.os or 'OS' }} • {{ device.cpu_vendor or 'CPU' }}</p>
                     <div class="price-tag d-inline-block">£{{ device.price }}</div>
                     <div class="mt-3">
-                        <span class="badge bg-success me-2"><i class="fas fa-shield-alt"></i> Security Verified</span>
+                        {% if device.security %}
+                        <span class="badge bg-success me-2"><i class="fas fa-shield-alt"></i> {{ device.security.level }} ({{ device.security.score }}%)</span>
+                        {% else %}
+                        <span class="badge bg-secondary me-2"><i class="fas fa-shield-alt"></i> Security Verified</span>
+                        {% endif %}
                         <span class="badge bg-info me-2"><i class="fas fa-certificate"></i> Enterprise Ready</span>
                         <span class="badge bg-warning"><i class="fas fa-bolt"></i> Latest Hardware</span>
                     </div>
@@ -209,6 +213,9 @@
                                 {% endif %}
                                 <li><i class="fas fa-check-circle text-success"></i> Latest generation hardware</li>
                                 <li><i class="fas fa-check-circle text-success"></i> Enterprise-grade security features</li>
+                                {% if device.security %}
+                                <li><i class="fas fa-shield-alt text-success"></i> Security score: <strong>{{ device.security.score }}%</strong> ({{ device.security.level }})</li>
+                                {% endif %}
                                 <li><i class="fas fa-check-circle text-success"></i> Compatible with modern business software</li>
                                 {% if 'Windows' in device.name or 'Surface' in device.name %}
                                 <li><i class="fas fa-check-circle text-success"></i> Pre-installed Windows 11 Pro</li>
@@ -302,27 +309,182 @@
 
                 <!-- Additional Security Considerations -->
                 <div class="row mt-4">
+                    <div class="col-md-6">
+                        <div class="spec-card">
+                            <h4><i class="warning-icon fas fa-exclamation-triangle"></i> Detected Risks</h4>
+                            {% if device.security and device.security.findings %}
+                                <ul class="mb-0">
+                                {% for f in device.security.findings %}
+                                    <li>{{ f }}</li>
+                                {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted mb-0">No significant risks detected.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="spec-card">
+                            <h4><i class="security-icon fas fa-tools"></i> Mitigations & Hardening</h4>
+                            {% if device.security and device.security.mitigations %}
+                                <ul class="mb-0">
+                                {% for m in device.security.mitigations %}
+                                    <li>{{ m }}</li>
+                                {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted mb-0">Keep OS and firmware updated. Enforce encryption and MFA.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tailored Recommendations -->
+                <div class="row mt-4">
                     <div class="col-12">
                         <div class="spec-card">
-                            <h4><i class="warning-icon fas fa-exclamation-triangle"></i> Important Security Considerations</h4>
+                            <h4><i class="fas fa-list-check text-primary"></i> Tailored Recommendations</h4>
+                            {% if device.security and device.security.recommendations %}
                             <div class="row">
-                                <div class="col-md-6">
-                                    <h6>Physical Security</h6>
-                                    <ul>
-                                        <li>Enable screen lock with short timeout</li>
-                                        <li>Use cable locks in shared spaces</li>
-                                        <li>Consider privacy screens for sensitive work</li>
+                                <div class="col-md-4">
+                                    <h6>Software</h6>
+                                    <ul class="mb-0">
+                                        {% for s in device.security.recommendations.software %}
+                                        <li>{{ s }}</li>
+                                        {% endfor %}
                                     </ul>
                                 </div>
-                                <div class="col-md-6">
-                                    <h6>Data Protection</h6>
-                                    <ul>
-                                        <li>Regular automated backups</li>
-                                        <li>Encrypt sensitive documents</li>
-                                        <li>Use VPN for remote connections</li>
+                                <div class="col-md-4">
+                                    <h6>Hardware</h6>
+                                    <ul class="mb-0">
+                                        {% for h in device.security.recommendations.hardware %}
+                                        <li>{{ h }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6>Settings</h6>
+                                    <ul class="mb-0">
+                                        {% for st in device.security.recommendations.settings %}
+                                        <li>{{ st }}</li>
+                                        {% endfor %}
                                     </ul>
                                 </div>
                             </div>
+                            {% else %}
+                            <p class="text-muted mb-0">Standard baseline: encryption, MFA, automatic updates, and MDM.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Automated Hardening Script Generator -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="spec-card">
+                            <h4><i class="fas fa-terminal text-dark"></i> Automated Hardening Script</h4>
+                            <p class="text-muted mb-2">Select the actions you want to include and generate a downloadable script to apply them automatically.</p>
+                            <form method="POST" action="/generate-hardening-script" target="_blank" id="hardeningForm">
+                                <input type="hidden" name="device_id" value="{{ device.id }}">
+                                <input type="hidden" name="os" value="{{ device.os or 'Windows 11' }}">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <h6 class="mt-2">Core Security</h6>
+                                        <div class="form-check" data-task-id="enable_full_disk_encryption">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="enable_full_disk_encryption" id="t1" checked>
+                                            <label class="form-check-label" for="t1">Enable Full Disk Encryption</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="enforce_firewall">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="enforce_firewall" id="t2" checked>
+                                            <label class="form-check-label" for="t2">Enforce Firewall</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="enable_automatic_updates">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="enable_automatic_updates" id="t3" checked>
+                                            <label class="form-check-label" for="t3">Enable Automatic Updates</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h6 class="mt-2">Hardening</h6>
+                                        <div class="form-check" data-task-id="disable_smb1">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="disable_smb1" id="t4">
+                                            <label class="form-check-label" for="t4">Disable SMBv1 / Legacy Protocols (Win)</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="harden_powershell">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="harden_powershell" id="t5">
+                                            <label class="form-check-label" for="t5">Harden PowerShell Execution Policy (Win)</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="remove_bloatware_oem">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="remove_bloatware_oem" id="t6">
+                                            <label class="form-check-label" for="t6">Remove Common OEM Bloatware (Win)</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="install_fail2ban">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="install_fail2ban" id="t6b">
+                                            <label class="form-check-label" for="t6b">Install & Enable fail2ban (Linux)</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="disable_root_ssh_login">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="disable_root_ssh_login" id="t6c">
+                                            <label class="form-check-label" for="t6c">Disable Root SSH Login (Linux)</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="enforce_password_policy_note">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="enforce_password_policy_note" id="t6d">
+                                            <label class="form-check-label" for="t6d">Password Policy Note (Linux)</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <h6 class="mt-2">Platform-Specific</h6>
+                                        <div class="form-check" data-task-id="enable_gatekeeper">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="enable_gatekeeper" id="t7">
+                                            <label class="form-check-label" for="t7">Enable Gatekeeper (macOS)</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="disable_airdrop">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="disable_airdrop" id="t8">
+                                            <label class="form-check-label" for="t8">Disable AirDrop (macOS)</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="disable_remote_login">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="disable_remote_login" id="t9">
+                                            <label class="form-check-label" for="t9">Disable Remote Login (macOS)</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="enable_windows_defender_smart_app_control">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="enable_windows_defender_smart_app_control" id="t10">
+                                            <label class="form-check-label" for="t10">Smart App Control Note (Win)</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="note_android_enterprise">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="note_android_enterprise" id="t11">
+                                            <label class="form-check-label" for="t11">Android Enterprise Policy Note</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="note_ipados_mdm">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="note_ipados_mdm" id="t12">
+                                            <label class="form-check-label" for="t12">iPadOS MDM Profile Note</label>
+                                        </div>
+                                        <div class="form-check" data-task-id="note_chromeos_admin_console">
+                                            <input class="form-check-input" type="checkbox" name="tasks" value="note_chromeos_admin_console" id="t13">
+                                            <label class="form-check-label" for="t13">ChromeOS Admin Console Note</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-3 d-flex justify-content-between flex-wrap">
+                                    <small class="text-muted">Script is generated client request time; review before running with admin privileges.</small>
+                                    <button type="submit" class="btn btn-outline-primary"><i class="fas fa-download"></i> Download Script</button>
+                                </div>
+                                <div class="mt-3">
+                                    <details>
+                                        <summary class="fw-semibold">Integrity & Signing Instructions</summary>
+                                        <div class="mt-2 small">
+                                            <p>After downloading, verify integrity before execution:</p>
+                                            <ul>
+                                                <li><strong>Windows (PowerShell):</strong> <code>Get-FileHash .\hardening_device_{{ device.id or 'unknown' }}.ps1 -Algorithm SHA256</code></li>
+                                                <li><strong>macOS/Linux:</strong> <code>shasum -a 256 hardening_device_{{ device.id or 'unknown' }}.sh</code></li>
+                                            </ul>
+                                            <p>Optional code signing (advanced):</p>
+                                            <ul>
+                                                <li><strong>Windows (self-signed demo):</strong> <code>New-SelfSignedCertificate -DnsName "ProvisioningLocal" -Type CodeSigning; Set-AuthenticodeSignature .\script.ps1 (Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -match 'ProvisioningLocal' })</code></li>
+                                                <li><strong>GPG (macOS/Linux):</strong> <code>gpg --clear-sign hardening_device_{{ device.id or 'unknown' }}.sh</code></li>
+                                            </ul>
+                                            <p class="text-muted">Distribute checksum separately (out-of-band) to detect tampering.</p>
+                                        </div>
+                                    </details>
+                                </div>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -524,6 +686,48 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Dynamic Hardening UI logic
+        (function(){
+            const os = "{{ device.os or 'Windows 11' }}";
+            // Map OS to allowed task IDs
+            const osTasks = {
+                'Windows 11': ['enable_full_disk_encryption','enforce_firewall','enable_automatic_updates','disable_smb1','harden_powershell','remove_bloatware_oem','enable_windows_defender_smart_app_control'],
+                'Windows': ['enable_full_disk_encryption','enforce_firewall','enable_automatic_updates','disable_smb1','harden_powershell','remove_bloatware_oem','enable_windows_defender_smart_app_control'],
+                'macOS': ['enable_full_disk_encryption','enforce_firewall','enable_automatic_updates','enable_gatekeeper','disable_airdrop','disable_remote_login'],
+                'Linux': ['enable_full_disk_encryption','enforce_firewall','enable_automatic_updates','install_fail2ban','disable_root_ssh_login','enforce_password_policy_note'],
+                'Android': ['note_android_enterprise'],
+                'iPadOS': ['note_ipados_mdm'],
+                'ChromeOS': ['note_chromeos_admin_console']
+            };
+            const allowed = osTasks[os] || osTasks['Windows 11'];
+            // Hide all non-applicable tasks
+            document.querySelectorAll('#hardeningForm [data-task-id]').forEach(div => {
+                const tid = div.getAttribute('data-task-id');
+                if(!allowed.includes(tid)) {
+                    div.style.display = 'none';
+                    const cb = div.querySelector('input[type=checkbox]');
+                    if(cb) cb.checked = false;
+                }
+            });
+            // Findings-based preselection
+            const findingToTask = [
+                {k:'preinstalled software', t:'remove_bloatware_oem'},
+                {k:'bloatware', t:'remove_bloatware_oem'},
+                {k:'fragmentation', t:'enable_automatic_updates'},
+                {k:'speculative execution', t:'enable_automatic_updates'},
+                {k:'ssh', t:'disable_root_ssh_login'}
+            ];
+            const findingsEls = Array.from(document.querySelectorAll('.spec-card ul li')).map(li=>li.textContent.toLowerCase());
+            findingToTask.forEach(map => {
+                if(findingsEls.some(f=>f.includes(map.k))){
+                    const targetDiv = document.querySelector(`#hardeningForm [data-task-id='${map.t}']`);
+                    if(targetDiv && targetDiv.style.display !== 'none'){
+                        const cb = targetDiv.querySelector('input[type=checkbox]');
+                        if(cb) cb.checked = true;
+                    }
+                }
+            });
+        })();
         function loadComparison() {
             const category = document.getElementById('compareCategory').value;
             const priceRange = document.getElementById('comparePriceRange').value;

@@ -1,8 +1,12 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response
+import os
 import sqlite3
 import graphviz
 import random
+import threading
 from device_scraper import DeviceDataScraper, FALLBACK_DEVICE_DATA
+import re
+import time
 
 app = Flask(__name__)
 form_submitted = False
@@ -11,6 +15,53 @@ devices = []
 
 # Initialize device scraper
 device_scraper = DeviceDataScraper()
+
+# ---- Performance Helpers (Caching & Indexes) (moved up so routes can call) ----
+LIVE_LISTINGS_CACHE = { 'data': [], 'ts': 0 }
+LIVE_CACHE_TTL = 900  # 15 minutes
+
+def get_cached_live_listings():
+    """Return cached live listings or refresh if TTL expired."""
+    now = time.time()
+    if LIVE_LISTINGS_CACHE['data'] and now - LIVE_LISTINGS_CACHE['ts'] < LIVE_CACHE_TTL:
+        return LIVE_LISTINGS_CACHE['data']
+    try:
+        live = device_scraper.get_real_device_data()[:8]
+        mapped = [{
+            'id': None,
+            'name': x.get('name'),
+            'category': x.get('category'),
+            'cpu_speed': x.get('cpu_speed', 0),
+            'ram': x.get('ram', 0),
+            'storage': x.get('storage', 0),
+            'screen_size': x.get('screen_size', 0),
+            'price': x.get('price', 0),
+            'image_url': x.get('image_url'),
+            'source': x.get('source')
+        } for x in live]
+        enriched = apply_rule_engine(mapped, use_case='Work')
+        for item in enriched:
+            item['retailer_links'] = get_retailer_links(item['name'], item['category'] or 'device')
+        LIVE_LISTINGS_CACHE['data'] = enriched
+        LIVE_LISTINGS_CACHE['ts'] = now
+        return enriched
+    except Exception as e:
+        print(f"Error fetching live listings (cache): {e}")
+        return []
+
+def ensure_db_indexes():
+    try:
+        conn = sqlite3.connect('devices.db')
+        cursor = conn.cursor()
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_devices_name ON devices(name)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_devices_category ON devices(category)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_devices_price ON devices(price)')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Index creation error: {e}")
+
+ensure_db_indexes()
 
 # Minimum requirements based on UK government recommendations
 minimum_requirements = {
@@ -21,6 +72,198 @@ minimum_requirements = {
     'storage': 256,    # GB
     'screen_size': 9,  # inches
 }
+
+# --- Security Rule Engine and Scoring ---
+
+def infer_os_and_cpu(device_name: str, category: str):
+    name = device_name.lower()
+    # OS inference
+    if any(k in name for k in ['macbook', 'imac', 'mac ', 'macos', 'apple']):
+        os = 'macOS'
+        cpu_vendor = 'Apple Silicon' if any(k in name for k in ['m1', 'm2', 'm3']) else 'Intel'
+    elif any(k in name for k in ['ipad']):
+        os = 'iPadOS'
+        cpu_vendor = 'Apple Silicon'
+    elif any(k in name for k in ['surface', 'windows', 'thinkpad', 'xps', 'latitude', 'hp ', 'spectre', 'pavilion', 'lenovo', 'dell']):
+        os = 'Windows 11'
+        # Rough CPU inference
+        if any(k in name for k in ['ryzen', 'amd']):
+            cpu_vendor = 'AMD'
+        elif any(k in name for k in ['intel', 'core i', 'i3', 'i5', 'i7', 'i9']):
+            cpu_vendor = 'Intel'
+        else:
+            cpu_vendor = 'Unknown'
+    elif any(k in name for k in ['chromebook', 'chromeos']):
+        os = 'ChromeOS'
+        cpu_vendor = 'Intel'
+    elif any(k in name for k in ['galaxy tab', 'android', 'samsung tab']):
+        os = 'Android'
+        cpu_vendor = 'Qualcomm'
+    elif any(k in name for k in ['ubuntu', ' linux', 'fedora', 'debian', 'redhat', 'centos', 'pop!_os', 'arch']):
+        os = 'Linux'
+        cpu_vendor = 'Intel'
+    else:
+        # Default by category
+        os = 'Windows 11' if category in ['Laptops', 'PCs'] else 'Android'
+        cpu_vendor = 'Intel' if category in ['Laptops', 'PCs'] else 'Unknown'
+    return os, cpu_vendor
+
+
+def detect_known_vulnerabilities(os: str, cpu_vendor: str, device_name: str):
+    findings = []
+    mitigations = []
+
+    # CPU micro-architectural vulns (generalized)
+    if cpu_vendor in ['Intel', 'AMD']:
+        findings.append('Speculative execution side-channels (Spectre/Meltdown class)')
+        mitigations.append('Ensure firmware (microcode) and OS patches are up to date; enable mitigations')
+
+    if cpu_vendor == 'Intel' and re.search(r'i3|i5|i7|i9', device_name, re.I):
+        mitigations.append('Enable/verify UEFI Secure Boot and TPM 2.0')
+
+    if os == 'Windows 11':
+        mitigations.append('Enable BitLocker with TPM 2.0 and PIN; use Windows Hello for Business')
+    elif os == 'macOS':
+        mitigations.append('Enable FileVault; require Apple ID with 2FA; Gatekeeper/App Notarization')
+    elif os in ['Android', 'iPadOS']:
+        mitigations.append('Require device encryption, biometric unlock, and MDM enrollment')
+
+    # Supply chain / bloatware risk on OEM Windows devices
+    if os == 'Windows 11' and any(b in device_name.lower() for b in ['hp', 'dell', 'lenovo', 'acer', 'asus']):
+        findings.append('Potential OEM preinstalled software increases attack surface')
+        mitigations.append('Use clean OS image or remove bloatware; consider Windows Autopilot/MDM')
+
+    # Example OS risks
+    if os == 'Android':
+        findings.append('Android fragmentation risk; slower security patch cadence on some models')
+        mitigations.append('Choose Android Enterprise Recommended models; enforce monthly patch SLAs')
+
+    return findings, mitigations
+
+
+def compute_security_score(device: dict, os: str, cpu_vendor: str, use_case: str):
+    # Base from hardware capability
+    score = 50
+    score += min(max((device.get('cpu_speed', 0) - 2.5) * 10, 0), 25)  # up to +25
+    score += 5 if device.get('ram', 0) >= 16 else (2 if device.get('ram', 0) >= 8 else 0)
+    score += 5 if device.get('storage', 0) >= 512 else 0
+
+    # OS baseline security
+    os_weight = {
+        'Windows 11': 10,
+        'macOS': 12,
+        'ChromeOS': 12,
+        'iPadOS': 10,
+        'Android': 6
+    }
+    score += os_weight.get(os, 8)
+
+    # CPU vendor risk adjustments
+    if cpu_vendor in ['Intel', 'AMD']:
+        score -= 5  # speculative class mitigations overhead and residual risk
+    elif cpu_vendor == 'Apple Silicon':
+        score += 3
+
+    # Use-case requirements tighten score caps
+    if use_case in ['Government', 'Public Sector']:
+        if device.get('ram', 0) < 16 or device.get('cpu_speed', 0) < 3.0:
+            score -= 8
+    elif use_case in ['Work', 'Business', 'Enterprise']:
+        if device.get('ram', 0) < 8:
+            score -= 5
+
+    # Clamp
+    score = max(0, min(100, int(round(score))))
+
+    # Level
+    if score >= 85:
+        level = 'Excellent'
+    elif score >= 70:
+        level = 'Good'
+    elif score >= 55:
+        level = 'Adequate'
+    else:
+        level = 'Risky'
+
+    return score, level
+
+
+def hardening_recommendations(os: str, use_case: str):
+    recs = {
+        'software': [],
+        'hardware': [],
+        'settings': []
+    }
+    # Software
+    if os == 'Windows 11':
+        recs['software'] = ['Microsoft Defender for Endpoint', 'BitLocker', 'Microsoft Intune/Autopilot']
+        recs['settings'] = ['Require TPM 2.0 + Secure Boot', 'Enforce WDAC/Smart App Control', 'Disable legacy protocols (SMBv1, NTLM where possible)']
+    elif os == 'macOS':
+        recs['software'] = ['Jamf Pro (MDM)', 'FileVault', 'Little Snitch or LuLu (network monitor)']
+        recs['settings'] = ['Enable Gatekeeper and System Integrity Protection', 'Require 2FA and strong passwords', 'Limit kernel/system extensions']
+    elif os == 'Android':
+        recs['software'] = ['Android Enterprise (MDM)', 'Google Play Protect (enforced)', 'Corporate VPN client']
+        recs['settings'] = ['Block sideloading; managed Play Store only', 'Enforce monthly security patches', 'Enable device encryption and work profile']
+    elif os == 'iPadOS':
+        recs['software'] = ['Apple Business Manager + MDM', 'Per-app VPN', 'Managed Open In policies']
+        recs['settings'] = ['Enforce passcode/biometric auth', 'Disallow unmanaged profiles', 'Automatic updates']
+    else:
+        recs['software'] = ['EDR/AV appropriate to OS', 'MDM enrollment']
+        recs['settings'] = ['Enable full-disk encryption', 'Automatic updates', 'Least privilege accounts']
+
+    # Hardware tokens and extras (all use-cases)
+    recs['hardware'] = ['FIDO2 security keys (e.g., YubiKey)', 'Privacy screen', 'Webcam cover']
+
+    # Tighten for government/public sector
+    if use_case in ['Government', 'Public Sector']:
+        recs['settings'].append('CIS benchmark-aligned configuration')
+        recs['hardware'].append('TPM 2.0 attestation (where applicable)')
+
+    return recs
+
+
+def apply_rule_engine(devices_list: list, use_case: str):
+    """Filter/enrich devices based on use-case policies and compute security metadata."""
+    enriched = []
+    for d in devices_list:
+        # Normalize keys between DB devices and scraped devices
+        device = {
+            'id': d.get('id'),
+            'name': d.get('name'),
+            'category': d.get('category'),
+            'cpu_speed': d.get('cpu_speed', 0),
+            'ram': d.get('ram', 0),
+            'storage': d.get('storage', 0),
+            'screen_size': d.get('screen_size', 0),
+            'price': d.get('price', 0),
+            'image': d.get('image') or d.get('image_url'),
+            'source': d.get('source')
+        }
+        os, cpu_vendor = infer_os_and_cpu(device['name'] or '', device.get('category') or '')
+        findings, mitigations = detect_known_vulnerabilities(os, cpu_vendor, device['name'] or '')
+        score, level = compute_security_score(device, os, cpu_vendor, use_case)
+        recs = hardening_recommendations(os, use_case)
+
+        # Policy gates
+        allowed = True
+        if use_case in ['Government', 'Public Sector']:
+            if device.get('ram', 0) < 16 or device.get('cpu_speed', 0) < 3.0:
+                allowed = False  # baseline capability requirement
+        if use_case in ['Work', 'Business', 'Enterprise'] and device.get('ram', 0) < 8:
+            allowed = False
+
+        device['os'] = os
+        device['cpu_vendor'] = cpu_vendor
+        device['security'] = {
+            'score': score,
+            'level': level,
+            'findings': findings,
+            'mitigations': mitigations,
+            'recommendations': recs
+        }
+        device['allowed'] = allowed
+        enriched.append(device)
+    return enriched
 
 def query_database(query, params):
     conn = sqlite3.connect('devices.db')
@@ -80,8 +323,18 @@ def index():
     recommended_devices = cursor.fetchall()
     conn.close()
     recommended_devices = convert_to_dict(recommended_devices)
+    # Enrich with security metadata for default view (assume Work baseline)
+    enriched_recommended = apply_rule_engine(recommended_devices, use_case='Work')
     print(f"Recommended devices: {recommended_devices}")
     
+    # Live listings via cache (performance optimization)
+    live_listings = get_cached_live_listings()
+
+    # Pagination params for search results
+    page = int(request.args.get('page', 1))
+    page_size = 20
+    total_results = 0
+
     if request.method == 'POST':
         form_submitted = True
         error_occurred = False
@@ -158,6 +411,10 @@ def index():
             params.append(f'%{brand}%')
         
         # Construct final query
+        offset = (page - 1) * page_size
+        # Count query
+        count_query = f"SELECT COUNT(*) FROM devices WHERE {' AND '.join(query_conditions)}"
+        # Main query with pagination
         query = f"""
         SELECT * FROM devices 
         WHERE {' AND '.join(query_conditions)}
@@ -167,16 +424,31 @@ def index():
                 WHEN ? = 'Work' THEN (ram + storage/20 + cpu_speed*5)
                 ELSE (price * -1)
             END DESC
-        LIMIT 20
+        LIMIT ? OFFSET ?
         """
-        params.extend([use, use])
+        params_for_query = params + [use, use, page_size, offset]
+        print(f"Pagination -> page {page} offset {offset} size {page_size}")
         
         print(f"Query: {query}")
         print(f"Params: {params}")
         
         try:
-            devices = query_database(query, params)
+            # Get total count
+            try:
+                conn_ct = sqlite3.connect('devices.db')
+                cursor_ct = conn_ct.cursor()
+                cursor_ct.execute(count_query, params)
+                total_results = cursor_ct.fetchone()[0]
+                conn_ct.close()
+            except Exception as ce:
+                print(f"Count query error: {ce}")
+            devices = query_database(query, params_for_query)
             devices = convert_to_dict(devices)
+            # Enrich search results with rule engine based on selected use-case
+            devices = apply_rule_engine(devices, use_case=use)
+            # Filter out disallowed for strict contexts (Government/Work); for Personal show all with labels
+            if use in ['Government', 'Public Sector', 'Work', 'Business', 'Enterprise']:
+                devices = [d for d in devices if d.get('allowed')]
             
             if not devices:
                 # Fallback to showing recommended devices with a message
@@ -192,7 +464,20 @@ def index():
         print(f"Form submission result: form_submitted={form_submitted}, error_occurred={error_occurred}")
         print("Loading Index HTML with sql results")
 
-    return render_template('index.html', recommended_devices=recommended_devices, light_mode_image=light_mode_image, dark_mode_image=dark_mode_image, form_submitted=form_submitted, error_occurred=error_occurred, devices=devices)
+    total_pages = (total_results // page_size + (1 if total_results % page_size else 0)) if total_results else 0
+    return render_template(
+        'index.html',
+        recommended_devices=enriched_recommended,
+        light_mode_image=light_mode_image,
+        dark_mode_image=dark_mode_image,
+        form_submitted=form_submitted,
+        error_occurred=error_occurred,
+        devices=devices,
+        live_listings=live_listings,
+        page=page,
+        total_pages=total_pages,
+        total_results=total_results
+    )
 
 @app.route('/device/<int:device_id>')
 def device(device_id):
@@ -204,10 +489,14 @@ def device(device_id):
     
     if device:
         device = convert_to_dict([device])[0]
-        
-        # Add security features and retailer links
-        security_features = enhance_device_data_with_security()
-        device['security_features'] = security_features.get(device['category'], {})
+        # Enrich with rule engine (assume Work here; could be parameterized)
+        enriched = apply_rule_engine([device], use_case='Work')[0]
+        device.update({
+            'os': enriched.get('os'),
+            'cpu_vendor': enriched.get('cpu_vendor'),
+            'security': enriched.get('security')
+        })
+        # Add retailer links
         device['retailer_links'] = get_retailer_links(device['name'], device['category'])
         
     print(f"Device details for ID {device_id}: {device}")
@@ -508,5 +797,223 @@ def get_retailer_links(device_name, category):
     
     return retailers
 
+# --- Hardening Script Generation ---
+
+HARDENING_COMMANDS = {
+    'Windows 11': {
+        'enable_full_disk_encryption': [
+            '# Enable BitLocker on system drive (requires elevation & TPM)',
+            'if ((Get-BitLockerVolume -MountPoint C:).VolumeStatus -ne "FullyEncrypted") {',
+            '  manage-bde -on C: -UsedSpaceOnly -RecoveryPassword',
+            '}',
+            'Write-Output "[Info] BitLocker enable command issued (may require reboot)."'
+        ],
+        'enforce_firewall': [
+            'Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True'
+        ],
+        'disable_smb1': [
+            'Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force',
+            'Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart'
+        ],
+        'enable_windows_defender_smart_app_control': [
+            '# Smart App Control cannot be force-enabled post installation; placeholder',
+            'Write-Output "[Info] Ensure Smart App Control is enabled (manual/UI if needed)."'
+        ],
+        'enable_automatic_updates': [
+            'Set-Service wuauserv -StartupType Automatic',
+            'Write-Output "[Info] Windows Update service set to Automatic."'
+        ],
+        'harden_powershell': [
+            'Set-ExecutionPolicy -ExecutionPolicy AllSigned -Scope LocalMachine -Force',
+            'Write-Output "[Info] PowerShell execution policy set to AllSigned."'
+        ],
+        'remove_bloatware_oem': [
+            '# Attempt removal of common OEM bloatware (safe sample subset)',
+            '$bloat = @("CandyCrush*","Spotify*","Disney*","Xbox*","Cortana")',
+            'Get-AppxPackage -AllUsers | Where-Object { $bloat | Where { $_ -like $_.Name } } | ForEach-Object { Remove-AppxPackage -Package $_.PackageFullName -ErrorAction SilentlyContinue }'
+        ],
+        'enable_bitlocker_network_unlock_note': [
+            'Write-Output "[Info] For network unlock configure WDS + DHCP with proper certificates (manual)."'
+        ]
+    },
+    'macOS': {
+        'enable_full_disk_encryption': [
+            'fdesetup status || fdesetup enable -user "$USER"',
+            'echo "[Info] FileVault enable command issued (may prompt)."'
+        ],
+        'enable_firewall': [
+            'defaults write /Library/Preferences/com.apple.alf globalstate -int 1',
+            'echo "[Info] macOS Application Firewall enabled."'
+        ],
+        'enable_gatekeeper': [
+            'spctl --master-enable',
+            'echo "[Info] Gatekeeper enforced (App notarization)."'
+        ],
+        'enable_automatic_updates': [
+            'softwareupdate --schedule on',
+            'defaults write /Library/Preferences/com.apple.SoftwareUpdate AutomaticCheckEnabled -bool TRUE'
+        ],
+        'disable_remote_login': [
+            'systemsetup -setremotelogin off',
+            'echo "[Info] Remote Login (SSH) disabled."'
+        ],
+        'disable_airdrop': [
+            'defaults write com.apple.NetworkBrowser DisableAirDrop -bool YES',
+            'echo "[Info] AirDrop disabled (user logout/restart may be needed)."'
+        ],
+        'enforce_password_policy_note': [
+            'echo "[Note] Use pwpolicy or MDM to enforce complex password baselines."'
+        ]
+    },
+    'Android': {
+        'note_android_enterprise': [
+            'echo "[Note] Use Android Enterprise policies via MDM for: encryption, screen lock, patch cadence."'
+        ]
+    },
+    'iPadOS': {
+        'note_ipados_mdm': [
+            'echo "[Note] Apply configuration profiles via Apple Business Manager / MDM."'
+        ]
+    },
+    'ChromeOS': {
+        'note_chromeos_admin_console': [
+            'echo "[Note] Enforce policies via Google Admin Console (Verified boot is default)."'
+        ]
+    },
+    'Linux': {
+        'enable_firewall': [
+            'echo "[Info] Enabling UFW firewall..."',
+            'if command -v ufw >/dev/null 2>&1; then sudo ufw enable || true; else echo "[Warn] UFW not installed"; fi'
+        ],
+        'enable_automatic_updates': [
+            'echo "[Info] Ensuring unattended-upgrades present (Debian/Ubuntu)..."',
+            'if command -v apt-get >/dev/null 2>&1; then sudo apt-get update -y || true; sudo apt-get install -y unattended-upgrades || true; sudo dpkg-reconfigure -plow unattended-upgrades || true; fi'
+        ],
+        'disable_root_ssh_login': [
+            'echo "[Info] Disabling direct root SSH login..."',
+            "sudo sed -i.bak 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config || true",
+            'sudo systemctl restart ssh || sudo systemctl restart sshd || true'
+        ],
+        'install_fail2ban': [
+            'echo "[Info] Installing fail2ban (Debian/Ubuntu)..."',
+            'if command -v apt-get >/dev/null 2>&1; then sudo apt-get install -y fail2ban || true; fi',
+            'sudo systemctl enable --now fail2ban || true'
+        ],
+        'enforce_password_policy_note': [
+            'echo "[Note] Configure PAM (pam_pwquality) & login.defs for password complexity and lockout."'
+        ]
+    }
+}
+
+def sanitize_task_id(label: str) -> str:
+    return re.sub(r'[^a-z0-9_]+', '', label.lower().replace(' ', '_'))
+
+def build_hardening_script(os_name: str, task_ids: list):
+    os_group = 'Windows 11' if 'Windows' in os_name else os_name
+    commands_map = HARDENING_COMMANDS.get(os_group, {})
+    shebang = ''
+    filename_ext = 'txt'
+    if os_group == 'Windows 11':
+        shebang = '# PowerShell Hardening Script\nSet-StrictMode -Version Latest\n$ErrorActionPreference = "Stop"\n'
+        filename_ext = 'ps1'
+    elif os_group in ['macOS', 'Linux']:
+        shebang = '#!/bin/bash\nset -euo pipefail\n'
+        filename_ext = 'sh'
+    else:
+        shebang = '#!/bin/sh\n'
+        filename_ext = 'sh'
+
+    header = [
+        '# =============================================',
+        '#  Device Provisioning Toolkit - Hardening Script',
+        f'#  Target OS: {os_name}',
+        '#  Generated: runtime',
+        '#  NOTE: Review before executing with elevated privileges.',
+        '# =============================================',
+        ''
+    ]
+
+    body = []
+    for tid in task_ids:
+        if tid in commands_map:
+            body.append(f"# -- Task: {tid} --")
+            body.extend(commands_map[tid])
+            body.append('')
+        else:
+            body.append(f"# [Skipped] Unknown or unsupported task id: {tid}")
+    script = shebang + '\n'.join(header + body) + '\n'
+    return script, filename_ext
+
+@app.route('/generate-hardening-script', methods=['POST'])
+def generate_hardening_script():
+    try:
+        form_tasks = request.form.getlist('tasks')
+        os_name = request.form.get('os', 'Unknown')
+        device_id = request.form.get('device_id')
+
+        # Whitelist tasks by sanitization & presence in mapping
+        normalized = []
+        os_group = 'Windows 11' if 'Windows' in os_name else os_name
+        valid_map = HARDENING_COMMANDS.get(os_group, {})
+        for t in form_tasks:
+            tid = sanitize_task_id(t)
+            if tid in valid_map:
+                normalized.append(tid)
+
+        if not normalized:
+            return Response('No valid tasks selected.', mimetype='text/plain')
+
+        script, ext = build_hardening_script(os_name, normalized)
+        fname = f'hardening_device_{device_id or "unknown"}.{ext}'
+        return Response(
+            script,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename={fname}'}
+        )
+    except Exception as e:
+        return Response(f'Error generating script: {e}', mimetype='text/plain', status=500)
+
 if __name__ == "__main__":
-    app.run(debug=True, port=8000)
+    port = int(os.environ.get('PORT', 8002))
+    app.run(debug=True, port=port)
+
+
+# ---- Asynchronous Scraping (background refresh) ----
+SCRAPE_THREAD = None
+SCRAPE_LOCK = threading.Lock()
+
+def background_scrape():
+    """Refresh devices in background without blocking request thread."""
+    print("[AsyncScrape] Background scrape started")
+    try:
+        real_devices = device_scraper.get_real_device_data()
+        if real_devices:
+            conn = sqlite3.connect('devices.db')
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM devices')
+            for d in real_devices:
+                cursor.execute('''INSERT INTO devices (name, category, cpu_speed, ram, storage, screen_size, price)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                               (d['name'], d['category'], d['cpu_speed'], d['ram'], d['storage'], d['screen_size'], d['price']))
+            conn.commit()
+            conn.close()
+            print(f"[AsyncScrape] Updated {len(real_devices)} devices")
+        else:
+            print("[AsyncScrape] No real devices fetched; skipping update")
+    except Exception as e:
+        print(f"[AsyncScrape] Error: {e}")
+    finally:
+        with SCRAPE_LOCK:
+            global SCRAPE_THREAD
+            SCRAPE_THREAD = None
+        print("[AsyncScrape] Background scrape finished")
+
+@app.route('/async-refresh', methods=['POST'])
+def async_refresh():
+    global SCRAPE_THREAD
+    with SCRAPE_LOCK:
+        if SCRAPE_THREAD and SCRAPE_THREAD.is_alive():
+            return jsonify({'status': 'in_progress'}), 202
+        SCRAPE_THREAD = threading.Thread(target=background_scrape, daemon=True)
+        SCRAPE_THREAD.start()
+    return jsonify({'status': 'started'}), 202

@@ -273,8 +273,13 @@
                         <div class="device-card-content">
                             <div class="device-title">{{ device.name }}</div>
                             <div class="device-specs">
-                                <p><strong>{{ device.category }}</strong> 
-                                    <span class="security-badge">🔒 Secure</span>
+                                <p>
+                                    <strong>{{ device.category }}</strong>
+                                    {% if device.security %}
+                                        <span class="security-badge">🔒 {{ device.security.level }} • {{ device.security.score }}%</span>
+                                    {% else %}
+                                        <span class="security-badge">🔒 Secure</span>
+                                    {% endif %}
                                 </p>
                                 <p>{{ device.cpu_speed }} GHz • {{ device.ram }}GB • {{ device.storage }}GB</p>
                                 <p>{{ device.screen_size }}" screen</p>
@@ -287,6 +292,49 @@
         </div>
     </div>
 
+    {% if live_listings and not form_submitted %}
+    <div class="recommendations-section">
+        <h2 class="section-title">
+            <i class="fas fa-bolt"></i> Live Listings (Security Assessed)
+        </h2>
+        <p class="section-subtitle">
+            Fresh results from trusted retailers, automatically assessed for security posture
+        </p>
+        <div class="device-container">
+            {% for item in live_listings %}
+            <div class="device-card-result">
+                <img src="{{ item.image }}" class="carouselimage" alt="{{ item.name }}"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="carouselimage" style="display:none;">📱<br>Device Image</div>
+                <div class="device-card-content">
+                    <div class="device-title">{{ item.name }}</div>
+                    <div class="device-specs">
+                        <p>
+                            <strong>{{ item.category }}</strong>
+                            {% if item.security %}
+                                <span class="security-badge">🔒 {{ item.security.level }} • {{ item.security.score }}%</span>
+                            {% endif %}
+                        </p>
+                        <p>{{ item.cpu_speed }} GHz • {{ item.ram }}GB • {{ item.storage }}GB</p>
+                        <p>{{ item.screen_size }}" display • <em>{{ item.source }}</em></p>
+                    </div>
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div class="device-price mb-0">£{{ item.price }}</div>
+                        <div>
+                            {% if item.retailer_links %}
+                                {% for key, link in item.retailer_links.items() %}
+                                   <a class="btn btn-sm btn-outline-primary ms-1" href="{{ link }}" target="_blank">{{ key|capitalize }}</a>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Search Results Section -->
     {% if form_submitted %}
     <div class="results-section">
@@ -297,7 +345,7 @@
             <p class="section-subtitle">
                 Displaying secure devices that meet your criteria with comprehensive security assessments
             </p>
-            <div class="device-container">
+                        <div class="device-container">
                 {% for device in devices %}
                     <div class="device-card-result" onclick="window.location.href='{{ url_for('device', device_id=device.id) }}'">
                         <img src="{{ device.image }}" class="carouselimage" alt="{{ device.name }}"
@@ -306,8 +354,11 @@
                         <div class="device-card-content">
                             <div class="device-title">{{ device.name }}</div>
                             <div class="device-specs">
-                                <p><strong>{{ device.category }}</strong> 
-                                    <span class="security-badge">🔒 Secure</span>
+                                <p>
+                                    <strong>{{ device.category }}</strong>
+                                    {% if device.security %}
+                                        <span class="security-badge">🔒 {{ device.security.level }} • {{ device.security.score }}%</span>
+                                    {% endif %}
                                 </p>
                                 <p>{{ device.cpu_speed }} GHz • {{ device.ram }}GB • {{ device.storage }}GB</p>
                                 <p>{{ device.screen_size }}" display</p>
@@ -317,11 +368,40 @@
                     </div>
                 {% endfor %}
             </div>
+                        {% if total_pages > 1 %}
+                        <nav aria-label="Search results pages" class="mt-4">
+                            <ul class="pagination justify-content-center">
+                                <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                                    <a class="page-link" href="?page={{ page - 1 }}" tabindex="-1">Previous</a>
+                                </li>
+                                {% for p in range(1, total_pages + 1) %}
+                                <li class="page-item {% if p == page %}active{% endif %}"><a class="page-link" href="?page={{ p }}">{{ p }}</a></li>
+                                {% endfor %}
+                                <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                                    <a class="page-link" href="?page={{ page + 1 }}">Next</a>
+                                </li>
+                            </ul>
+                            <p class="text-center text-muted small">Page {{ page }} of {{ total_pages }} • {{ total_results }} results</p>
+                        </nav>
+                        {% endif %}
         {% endif %}
     </div>
     {% endif %}
     
-    <script src="{{ url_for('static', filename='index.js') }}"></script>
+        <script src="{{ url_for('static', filename='index.js') }}"></script>
+        <script>
+            // Async refresh trigger
+            document.getElementById('refresh-devices-btn').addEventListener('click', function(){
+                this.disabled = true;
+                this.innerHTML = '<i class="fas fa-sync fa-spin"></i> Refreshing...';
+                fetch('/async-refresh', {method:'POST'}).then(r=>r.json()).then(js=>{
+                        this.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Requested';
+                        setTimeout(()=>{ this.disabled = false; this.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Device Data'; }, 5000);
+                }).catch(()=>{
+                        this.disabled = false; this.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Retry Refresh';
+                });
+            });
+        </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
