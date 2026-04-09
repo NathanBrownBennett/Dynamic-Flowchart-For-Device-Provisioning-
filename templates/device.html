@@ -226,6 +226,24 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="spec-card">
+                            <h4><i class="fas fa-gauge-high text-primary"></i> Hardware Benchmark Summary</h4>
+                            {% if device.benchmark %}
+                            <div class="row">
+                                <div class="col-md-3"><strong>Overall:</strong> {{ device.benchmark.overall_index }}/100</div>
+                                <div class="col-md-3"><strong>CPU Index:</strong> {{ device.benchmark.cpu_index }}/100</div>
+                                <div class="col-md-3"><strong>Memory Index:</strong> {{ device.benchmark.memory_index }}/100</div>
+                                <div class="col-md-3"><strong>Storage Index:</strong> {{ device.benchmark.storage_index }}/100</div>
+                            </div>
+                            {% else %}
+                            <p class="text-muted mb-0">Benchmark data unavailable for this device.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Security Guide Tab -->
@@ -373,6 +391,31 @@
                             </div>
                             {% else %}
                             <p class="text-muted mb-0">Standard baseline: encryption, MFA, automatic updates, and MDM.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="spec-card">
+                            <h4><i class="fas fa-broom text-danger"></i> Debloat & Performance Tools</h4>
+                            {% if device.debloat_tools %}
+                            <div class="row">
+                                {% for tool in device.debloat_tools %}
+                                <div class="col-md-6 mb-3">
+                                    <div class="border rounded p-3 h-100">
+                                        <h6 class="mb-1">{{ tool.name }}</h6>
+                                        <p class="text-muted small mb-2">{{ tool.description }}</p>
+                                        <a class="btn btn-sm btn-outline-danger" href="{{ tool.url }}" target="_blank" rel="noopener">
+                                            <i class="fas fa-external-link-alt"></i> Open Tool
+                                        </a>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <p class="text-muted mb-0">No debloat tool recommendations available for this platform.</p>
                             {% endif %}
                         </div>
                     </div>
@@ -552,62 +595,23 @@
                         <div class="spec-card">
                             <h5><i class="fas fa-store"></i> Authorized Retailers</h5>
                             <div class="retailer-list">
-                                <!-- Amazon -->
-                                <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
-                                    <div>
-                                        <strong>Amazon UK</strong>
-                                        <br><small class="text-muted">Fast delivery • Easy returns • Prime eligible</small>
+                                {% if device.retailer_links %}
+                                    {% for vendor, link in device.retailer_links.items() %}
+                                    <div class="d-flex justify-content-between align-items-center p-3 {% if not loop.last %}border-bottom{% endif %}">
+                                        <div>
+                                            <strong>{{ vendor.replace('_', ' ')|title }}</strong>
+                                            <br><small class="text-muted">Authorized marketplace listing for {{ device.name }}</small>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="h5 text-success mb-1">From £{{ device.price }}</div>
+                                            <a href="{{ link }}" class="buy-button" target="_blank" rel="noopener">
+                                                <i class="fas fa-external-link-alt"></i> Open {{ vendor.replace('_', ' ')|title }}
+                                            </a>
+                                        </div>
                                     </div>
-                                    <div class="text-end">
-                                        <div class="h5 text-success mb-1">£{{ device.price }}</div>
-                                        <a href="https://amazon.co.uk/s?k={{ device.name | urlencode }}" class="buy-button" target="_blank">
-                                            <i class="fas fa-external-link-alt"></i> Buy on Amazon
-                                        </a>
-                                    </div>
-                                </div>
-
-                                <!-- Currys -->
-                                <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
-                                    <div>
-                                        <strong>Currys PC World</strong>
-                                        <br><small class="text-muted">Click & Collect • Extended warranty available</small>
-                                    </div>
-                                    <div class="text-end">
-                                        <div class="h5 text-success mb-1">£{{ device.price + 50 }}</div>
-                                        <a href="https://currys.co.uk/search?q={{ device.name | urlencode }}" class="buy-button" target="_blank">
-                                            <i class="fas fa-external-link-alt"></i> Buy at Currys
-                                        </a>
-                                    </div>
-                                </div>
-
-                                <!-- John Lewis -->
-                                <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
-                                    <div>
-                                        <strong>John Lewis & Partners</strong>
-                                        <br><small class="text-muted">2-year guarantee • Excellent customer service</small>
-                                    </div>
-                                    <div class="text-end">
-                                        <div class="h5 text-success mb-1">£{{ device.price + 25 }}</div>
-                                        <a href="https://johnlewis.com/search?search-term={{ device.name | urlencode }}" class="buy-button" target="_blank">
-                                            <i class="fas fa-external-link-alt"></i> Buy at John Lewis
-                                        </a>
-                                    </div>
-                                </div>
-
-                                {% if 'Apple' in device.name or 'Mac' in device.name or 'iPad' in device.name %}
-                                <!-- Apple Store -->
-                                <div class="d-flex justify-content-between align-items-center p-3">
-                                    <div>
-                                        <strong>Apple Store</strong>
-                                        <br><small class="text-muted">Official warranty • AppleCare+ available</small>
-                                    </div>
-                                    <div class="text-end">
-                                        <div class="h5 text-success mb-1">£{{ device.price }}</div>
-                                        <a href="https://apple.com/uk/shop/buy-{{ device.category.lower() }}" class="buy-button" target="_blank">
-                                            <i class="fas fa-external-link-alt"></i> Buy from Apple
-                                        </a>
-                                    </div>
-                                </div>
+                                    {% endfor %}
+                                {% else %}
+                                <p class="text-muted p-3 mb-0">No retailer links currently available for this device.</p>
                                 {% endif %}
                             </div>
                         </div>

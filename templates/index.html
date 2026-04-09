@@ -283,8 +283,20 @@
                                 </p>
                                 <p>{{ device.cpu_speed }} GHz • {{ device.ram }}GB • {{ device.storage }}GB</p>
                                 <p>{{ device.screen_size }}" screen</p>
+                                {% if device.benchmark %}
+                                <p>Benchmark: <strong>{{ device.benchmark.overall_index }}/100</strong> (CPU {{ device.benchmark.cpu_index }}, RAM {{ device.benchmark.memory_index }}, Storage {{ device.benchmark.storage_index }})</p>
+                                {% endif %}
                             </div>
                             <div class="device-price">£{{ device.price }}</div>
+                            {% if device.retailer_links %}
+                            <div class="mt-2">
+                                {% for vendor, link in device.retailer_links.items() %}
+                                <a class="btn btn-sm btn-outline-primary me-1 mb-1" href="{{ link }}" target="_blank" rel="noopener" onclick="event.stopPropagation();">
+                                    {{ vendor.replace('_', ' ')|title }}
+                                </a>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 {% endfor %}
@@ -362,8 +374,20 @@
                                 </p>
                                 <p>{{ device.cpu_speed }} GHz • {{ device.ram }}GB • {{ device.storage }}GB</p>
                                 <p>{{ device.screen_size }}" display</p>
+                                {% if device.benchmark %}
+                                <p>Benchmark: <strong>{{ device.benchmark.overall_index }}/100</strong> (CPU {{ device.benchmark.cpu_index }}, RAM {{ device.benchmark.memory_index }}, Storage {{ device.benchmark.storage_index }})</p>
+                                {% endif %}
                             </div>
                             <div class="device-price">£{{ device.price }}</div>
+                            {% if device.retailer_links %}
+                            <div class="mt-2">
+                                {% for vendor, link in device.retailer_links.items() %}
+                                <a class="btn btn-sm btn-outline-primary me-1 mb-1" href="{{ link }}" target="_blank" rel="noopener" onclick="event.stopPropagation();">
+                                    {{ vendor.replace('_', ' ')|title }}
+                                </a>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 {% endfor %}

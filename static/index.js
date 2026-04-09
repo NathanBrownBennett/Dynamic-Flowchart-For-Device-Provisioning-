@@ -148,39 +148,6 @@ function checkStandards() {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     updateAllRangeValues();
-    
-    // Refresh devices functionality
-    const refreshBtn = document.getElementById('refresh-devices-btn');
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', function() {
-            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
-            refreshBtn.disabled = true;
-            
-            fetch('/refresh-devices', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert(`Successfully refreshed ${data.count} devices! Page will reload.`);
-                    location.reload();
-                } else {
-                    alert('Error refreshing devices: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error refreshing devices. Check console for details.');
-            })
-            .finally(() => {
-                refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Device Data';
-                refreshBtn.disabled = false;
-            });
-        });
-    }
 
     // Theme toggle
     const themeToggle = document.getElementById('theme-toggle');

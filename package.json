@@ -1,0 +1,14 @@
+{
+  "name": "device-provisioning-toolkit-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Playwright E2E tests for Dynamic Flowchart for Device Provisioning",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2"
+  }
+}

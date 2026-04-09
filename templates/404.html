@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Not Found - Device Provisioning Toolkit</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+            color: #e9f2f7;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .card-404 {
+            max-width: 680px;
+            border: 0;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(8px);
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .icon-wrap {
+            width: 74px;
+            height: 74px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.14);
+            color: #ffda79;
+            font-size: 1.8rem;
+        }
+
+        .muted-text {
+            color: #c7dce7;
+        }
+
+        .btn-home {
+            background: #0dcaf0;
+            border: none;
+            color: #06242d;
+            font-weight: 600;
+        }
+
+        .btn-home:hover {
+            background: #30d5f3;
+            color: #06242d;
+        }
+    </style>
+</head>
+<body>
+    <main class="container px-3">
+        <section class="card card-404 mx-auto">
+            <div class="card-body p-4 p-md-5 text-center">
+                <div class="icon-wrap mb-3" aria-hidden="true">
+                    <i class="fas fa-map-signs"></i>
+                </div>
+                <h1 class="h2 mb-2">404: Page Not Found</h1>
+                <p class="muted-text mb-4">
+                    The page you requested is unavailable or the link is invalid.
+                    Please return to the homepage and continue from there.
+                </p>
+                <a href="/" class="btn btn-home px-4 py-2">
+                    <i class="fas fa-home"></i> Back To Home
+                </a>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, Response
+from flask import Flask, render_template, request, jsonify, send_file, Response, abort
 import os
 import sqlite3
 import graphviz
@@ -12,6 +12,11 @@ app = Flask(__name__)
 form_submitted = False
 error_occurred = False
 devices = []
+
+
+@app.errorhandler(404)
+def not_found(error):
+    return render_template('404.html'), 404
 
 # Initialize device scraper
 device_scraper = DeviceDataScraper()
@@ -222,6 +227,136 @@ def hardening_recommendations(os: str, use_case: str):
     return recs
 
 
+def compute_benchmark_metrics(device: dict, security_score: int):
+    """Compute simple normalized hardware benchmark indices for display."""
+    cpu_speed = float(device.get('cpu_speed') or 0)
+    ram_gb = int(device.get('ram') or 0)
+    storage_gb = int(device.get('storage') or 0)
+
+    # Hardware-only indices (0-100)
+    cpu_index = max(0, min(100, int(round((cpu_speed / 5.0) * 100))))
+    memory_index = max(0, min(100, int(round((ram_gb / 64.0) * 100))))
+    storage_index = max(0, min(100, int(round((storage_gb / 2000.0) * 100))))
+
+    # Weighted blended score with security posture included for practical ranking
+    overall = int(round(
+        cpu_index * 0.35 +
+        memory_index * 0.25 +
+        storage_index * 0.15 +
+        security_score * 0.25
+    ))
+
+    return {
+        'cpu_index': cpu_index,
+        'memory_index': memory_index,
+        'storage_index': storage_index,
+        'overall_index': max(0, min(100, overall))
+    }
+
+
+def get_debloat_tools(os_name: str, device_name: str):
+    """Return curated debloat/performance optimization tools by inferred OS and vendor."""
+    os_group = 'Windows 11' if 'Windows' in (os_name or '') else (os_name or '')
+    name = (device_name or '').lower()
+
+    tools_by_os = {
+        'Windows 11': [
+            {
+                'name': 'O&O AppBuster',
+                'url': 'https://www.oo-software.com/en/ooappbuster',
+                'description': 'Removes preinstalled Windows apps and OEM bloatware safely.'
+            },
+            {
+                'name': 'BCUninstaller',
+                'url': 'https://www.bcuninstaller.com/',
+                'description': 'Batch uninstall utility for stubborn software and leftovers.'
+            },
+            {
+                'name': 'Microsoft PC Manager',
+                'url': 'https://pcmanager.microsoft.com/',
+                'description': 'Official cleanup and startup optimization tool from Microsoft.'
+            }
+        ],
+        'macOS': [
+            {
+                'name': 'AppCleaner',
+                'url': 'https://freemacsoft.net/appcleaner/',
+                'description': 'Thoroughly removes apps and residual files.'
+            },
+            {
+                'name': 'OnyX',
+                'url': 'https://www.titanium-software.fr/en/onyx.html',
+                'description': 'Maintenance, cache cleanup, and system tuning utility.'
+            }
+        ],
+        'Linux': [
+            {
+                'name': 'BleachBit',
+                'url': 'https://www.bleachbit.org/',
+                'description': 'System cleaner for cache/log cleanup and reclaiming storage.'
+            },
+            {
+                'name': 'Stacer',
+                'url': 'https://github.com/oguzhaninan/Stacer',
+                'description': 'Open-source optimizer and startup/process management dashboard.'
+            }
+        ],
+        'Android': [
+            {
+                'name': 'Universal Android Debloater Next Generation',
+                'url': 'https://github.com/Universal-Debloater-Alliance/universal-android-debloater-next-generation',
+                'description': 'ADB-based debloat utility for removing non-essential packages.'
+            }
+        ],
+        'iPadOS': [
+            {
+                'name': 'Apple Configurator',
+                'url': 'https://apps.apple.com/us/app/apple-configurator/id1037126344',
+                'description': 'Apple-managed provisioning and app/profile control utility.'
+            }
+        ],
+        'ChromeOS': [
+            {
+                'name': 'Google Admin Console',
+                'url': 'https://admin.google.com/',
+                'description': 'Policy-driven app control and performance hygiene at scale.'
+            }
+        ]
+    }
+
+    vendor_tool = None
+    if os_group == 'Windows 11':
+        if 'dell' in name:
+            vendor_tool = {
+                'name': 'Dell SupportAssist (Cleanup/Updates)',
+                'url': 'https://www.dell.com/support/home/supportassist',
+                'description': 'Driver, firmware, and diagnostics management for Dell devices.'
+            }
+        elif 'lenovo' in name:
+            vendor_tool = {
+                'name': 'Lenovo Vantage',
+                'url': 'https://support.lenovo.com/solutions/ht505081',
+                'description': 'Device maintenance and update management for Lenovo systems.'
+            }
+        elif 'hp' in name:
+            vendor_tool = {
+                'name': 'HP Support Assistant',
+                'url': 'https://support.hp.com/help/hp-support-assistant',
+                'description': 'HP diagnostics, updates, and optimization utility.'
+            }
+        elif 'surface' in name or 'microsoft' in name:
+            vendor_tool = {
+                'name': 'Surface Diagnostic Toolkit',
+                'url': 'https://support.microsoft.com/surface',
+                'description': 'Diagnostics and tuning resources for Microsoft Surface devices.'
+            }
+
+    tools = list(tools_by_os.get(os_group, tools_by_os.get('Windows 11', [])))
+    if vendor_tool:
+        tools.append(vendor_tool)
+    return tools
+
+
 def apply_rule_engine(devices_list: list, use_case: str):
     """Filter/enrich devices based on use-case policies and compute security metadata."""
     enriched = []
@@ -261,6 +396,9 @@ def apply_rule_engine(devices_list: list, use_case: str):
             'mitigations': mitigations,
             'recommendations': recs
         }
+        device['benchmark'] = compute_benchmark_metrics(device, score)
+        device['debloat_tools'] = get_debloat_tools(os, device.get('name') or '')
+        device['retailer_links'] = get_retailer_links(device['name'], device.get('category') or 'device')
         device['allowed'] = allowed
         enriched.append(device)
     return enriched
@@ -487,17 +625,19 @@ def device(device_id):
     device = cursor.fetchone()
     conn.close()
     
-    if device:
-        device = convert_to_dict([device])[0]
-        # Enrich with rule engine (assume Work here; could be parameterized)
-        enriched = apply_rule_engine([device], use_case='Work')[0]
-        device.update({
-            'os': enriched.get('os'),
-            'cpu_vendor': enriched.get('cpu_vendor'),
-            'security': enriched.get('security')
-        })
-        # Add retailer links
-        device['retailer_links'] = get_retailer_links(device['name'], device['category'])
+    if not device:
+        abort(404)
+
+    device = convert_to_dict([device])[0]
+    # Enrich with rule engine (assume Work here; could be parameterized)
+    enriched = apply_rule_engine([device], use_case='Work')[0]
+    device.update({
+        'os': enriched.get('os'),
+        'cpu_vendor': enriched.get('cpu_vendor'),
+        'security': enriched.get('security')
+    })
+    # Add retailer links
+    device['retailer_links'] = get_retailer_links(device['name'], device['category'])
         
     print(f"Device details for ID {device_id}: {device}")
     
@@ -544,16 +684,26 @@ def create_flowchart(device, usage):
         dot.node(security_node, entry[1])
         dot.edge('C', security_node)
 
-    image_path = f"static/flowcharts/{device['id']}.svg"
-    dot.render(image_path, format='svg', cleanup=True)
+    output_base = os.path.join('static', 'flowcharts', str(device['id']))
+    dot.render(output_base, format='svg', cleanup=True)
 
     conn.close()
 
-    return image_path + '.svg'
+    return output_base + '.svg'
 
 @app.route("/flowchart/<path:image_path>")
 def serve_flowchart(image_path):
-    return send_file(image_path, mimetype='image/svg+xml')
+    # Only allow serving SVGs from static/flowcharts and reject path traversal.
+    safe_name = os.path.basename(image_path)
+    if safe_name != image_path or not safe_name.lower().endswith('.svg'):
+        abort(404)
+
+    static_root = app.static_folder or os.path.join(app.root_path, 'static')
+    full_path = os.path.join(static_root, 'flowcharts', safe_name)
+    if not os.path.isfile(full_path):
+        abort(404)
+
+    return send_file(full_path, mimetype='image/svg+xml')
 
 @app.route("/flowchart")
 def flowchart():
@@ -622,24 +772,24 @@ def get_device_image_url(device_name):
     device_name_lower = device_name.lower()
     
     if 'laptop' in device_name_lower or 'book' in device_name_lower:
-        return 'static/images/1.jpg'  # Laptop placeholder
+        return '/static/images/1.jpg'  # Laptop placeholder
     elif 'desktop' in device_name_lower or 'pc' in device_name_lower:
-        return 'static/images/2.jpg'  # Desktop placeholder
+        return '/static/images/2.jpg'  # Desktop placeholder
     elif 'tablet' in device_name_lower or 'ipad' in device_name_lower:
-        return 'static/images/3.jpg'  # Tablet placeholder
+        return '/static/images/3.jpg'  # Tablet placeholder
     elif 'apple' in device_name_lower or 'mac' in device_name_lower:
-        return 'static/images/4.jpg'  # Apple device placeholder
+        return '/static/images/4.jpg'  # Apple device placeholder
     elif 'dell' in device_name_lower:
-        return 'static/images/5.jpg'  # Dell placeholder
+        return '/static/images/5.jpg'  # Dell placeholder
     elif 'hp' in device_name_lower:
-        return 'static/images/6.jpg'  # HP placeholder
+        return '/static/images/6.jpg'  # HP placeholder
     elif 'lenovo' in device_name_lower:
-        return 'static/images/7.jpg'  # Lenovo placeholder
+        return '/static/images/7.jpg'  # Lenovo placeholder
     elif 'microsoft' in device_name_lower or 'surface' in device_name_lower:
-        return 'static/images/8.jpg'  # Microsoft placeholder
+        return '/static/images/8.jpg'  # Microsoft placeholder
     else:
         # Default to a random placeholder from available images
-        base_path = 'static/images'
+        base_path = '/static/images'
         image_num = abs(hash(device_name)) % 16 + 1  # Deterministic but varied
         return f'{base_path}/{image_num}.jpg'
 
@@ -973,11 +1123,6 @@ def generate_hardening_script():
     except Exception as e:
         return Response(f'Error generating script: {e}', mimetype='text/plain', status=500)
 
-if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 8002))
-    app.run(debug=True, port=port)
-
-
 # ---- Asynchronous Scraping (background refresh) ----
 SCRAPE_THREAD = None
 SCRAPE_LOCK = threading.Lock()
@@ -1017,3 +1162,9 @@ def async_refresh():
         SCRAPE_THREAD = threading.Thread(target=background_scrape, daemon=True)
         SCRAPE_THREAD.start()
     return jsonify({'status': 'started'}), 202
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 8002))
+    debug_mode = os.environ.get('FLASK_DEBUG', '').lower() in ('1', 'true', 'yes', 'on')
+    app.run(debug=debug_mode, port=port)
