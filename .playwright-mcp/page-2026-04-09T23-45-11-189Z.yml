@@ -1,0 +1,118 @@
+- generic [ref=e1]:
+  - generic [ref=e4]:
+    - img "Dell XPS 13 Plus" [ref=e6]
+    - generic [ref=e7]:
+      - heading "Dell XPS 13 Plus" [level=1] [ref=e8]
+      - paragraph [ref=e9]: Laptops • Windows 11 • Unknown
+      - generic [ref=e10]: £1299.0
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]: 
+          - text: Excellent (92%)
+        - generic [ref=e14]:
+          - generic [ref=e15]: 
+          - text: Enterprise Ready
+        - generic [ref=e16]:
+          - generic [ref=e17]: 
+          - text: Latest Hardware
+  - generic [ref=e18]:
+    - tablist [ref=e19]:
+      - tab " Overview" [ref=e20] [cursor=pointer]:
+        - generic [ref=e21]: 
+        - text: Overview
+      - tab " Security Guide" [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: 
+        - text: Security Guide
+      - tab " Compare" [ref=e24] [cursor=pointer]:
+        - generic [ref=e25]: 
+        - text: Compare
+      - tab " Purchase" [active] [selected] [ref=e26] [cursor=pointer]:
+        - generic [ref=e27]: 
+        - text: Purchase
+    - generic [ref=e28]:
+      - text:                              
+      - tabpanel " Purchase" [ref=e225]:
+        - heading " Purchase Options" [level=3] [ref=e226]:
+          - generic [ref=e227]: 
+          - text: Purchase Options
+        - paragraph [ref=e228]: Get the best deals from verified retailers with warranty and support.
+        - generic [ref=e229]:
+          - generic [ref=e231]:
+            - heading " Authorized Retailers" [level=5] [ref=e232]:
+              - generic [ref=e233]: 
+              - text: Authorized Retailers
+            - generic [ref=e234]:
+              - generic [ref=e235]:
+                - generic [ref=e236]:
+                  - strong [ref=e237]: Amazon
+                  - text: Authorized marketplace listing for Dell XPS 13 Plus
+                - generic [ref=e238]:
+                  - generic [ref=e239]: From £1299.0
+                  - link " Open Amazon" [ref=e240] [cursor=pointer]:
+                    - /url: https://amazon.co.uk/s?k=Dell+XPS+13+Plus
+                    - generic [ref=e241]: 
+                    - text: Open Amazon
+              - generic [ref=e242]:
+                - generic [ref=e243]:
+                  - strong [ref=e244]: Currys
+                  - text: Authorized marketplace listing for Dell XPS 13 Plus
+                - generic [ref=e245]:
+                  - generic [ref=e246]: From £1299.0
+                  - link " Open Currys" [ref=e247] [cursor=pointer]:
+                    - /url: https://currys.co.uk/search?q=Dell+XPS+13+Plus
+                    - generic [ref=e248]: 
+                    - text: Open Currys
+              - generic [ref=e249]:
+                - generic [ref=e250]:
+                  - strong [ref=e251]: Johnlewis
+                  - text: Authorized marketplace listing for Dell XPS 13 Plus
+                - generic [ref=e252]:
+                  - generic [ref=e253]: From £1299.0
+                  - link " Open Johnlewis" [ref=e254] [cursor=pointer]:
+                    - /url: https://johnlewis.com/search?search-term=Dell+XPS+13+Plus
+                    - generic [ref=e255]: 
+                    - text: Open Johnlewis
+          - generic [ref=e256]:
+            - generic [ref=e257]:
+              - heading " Purchase Checklist" [level=5] [ref=e258]:
+                - generic [ref=e259]: 
+                - text: Purchase Checklist
+              - generic [ref=e260]:
+                - checkbox "Extended warranty considered" [ref=e261]
+                - generic [ref=e262]: Extended warranty considered
+              - generic [ref=e263]:
+                - checkbox "Essential accessories identified" [ref=e264]
+                - generic [ref=e265]: Essential accessories identified
+              - generic [ref=e266]:
+                - checkbox "Support options reviewed" [ref=e267]
+                - generic [ref=e268]: Support options reviewed
+              - generic [ref=e269]:
+                - checkbox "Budget approved" [ref=e270]
+                - generic [ref=e271]: Budget approved
+            - generic [ref=e272]:
+              - heading " Recommended Accessories" [level=5] [ref=e273]:
+                - generic [ref=e274]: 
+                - text: Recommended Accessories
+              - list [ref=e275]:
+                - listitem [ref=e276]:
+                  - generic [ref=e277]: 
+                  - text: Wireless mouse
+                - listitem [ref=e278]:
+                  - generic [ref=e279]: 
+                  - text: External keyboard
+                - listitem [ref=e280]:
+                  - generic [ref=e281]: 
+                  - text: Laptop bag/case
+                - listitem [ref=e282]:
+                  - generic [ref=e283]: 
+                  - text: Power adapter
+    - generic [ref=e75]:
+      - button " Back to Search" [ref=e76] [cursor=pointer]:
+        - generic [ref=e77]: 
+        - text: Back to Search
+      - button " Print Guide" [ref=e78] [cursor=pointer]:
+        - generic [ref=e79]: 
+        - text: Print Guide
+      - button " Download Security Checklist" [ref=e80] [cursor=pointer]:
+        - generic [ref=e81]: 
+        - text: Download Security Checklist

@@ -1,0 +1,99 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e4]:
+    - img "Dell XPS 13 Plus" [ref=e6]
+    - generic [ref=e7]:
+      - heading "Dell XPS 13 Plus" [level=1] [ref=e8]
+      - paragraph [ref=e9]: Laptops • Windows 11 • Unknown
+      - generic [ref=e10]: £1299.0
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]: 
+          - text: Excellent (92%)
+        - generic [ref=e14]:
+          - generic [ref=e15]: 
+          - text: Enterprise Ready
+        - generic [ref=e16]:
+          - generic [ref=e17]: 
+          - text: Latest Hardware
+  - generic [ref=e18]:
+    - tablist [ref=e19]:
+      - tab " Overview" [selected] [ref=e20] [cursor=pointer]:
+        - generic [ref=e21]: 
+        - text: Overview
+      - tab " Security Guide" [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: 
+        - text: Security Guide
+      - tab " Compare" [ref=e24] [cursor=pointer]:
+        - generic [ref=e25]: 
+        - text: Compare
+      - tab " Purchase" [ref=e26] [cursor=pointer]:
+        - generic [ref=e27]: 
+        - text: Purchase
+    - generic [ref=e28]:
+      - tabpanel " Overview" [ref=e29]:
+        - generic [ref=e30]:
+          - generic [ref=e32]:
+            - heading " Performance Specifications" [level=4] [ref=e33]:
+              - generic [ref=e34]: 
+              - text: Performance Specifications
+            - generic [ref=e35]:
+              - generic [ref=e36]:
+                - strong [ref=e37]: "Processor:"
+                - text: 4.7 GHz
+                - generic [ref=e38]: High Performance
+              - generic [ref=e39]:
+                - strong [ref=e40]: "Memory:"
+                - text: 16 GB RAM
+                - generic [ref=e41]: Professional
+              - generic [ref=e42]:
+                - strong [ref=e43]: "Storage:"
+                - text: 512 GB SSD
+                - generic [ref=e44]: Ample Space
+              - generic [ref=e45]:
+                - strong [ref=e46]: "Display:"
+                - text: 13.4" Screen
+                - generic [ref=e47]: Standard
+          - generic [ref=e49]:
+            - heading " Why This Device?" [level=4] [ref=e50]:
+              - generic [ref=e51]: 
+              - text: Why This Device?
+            - list [ref=e52]:
+              - listitem [ref=e53]:
+                - generic [ref=e54]: 
+                - text: Excellent multitasking with 16GB+ RAM
+              - listitem [ref=e55]:
+                - generic [ref=e56]: 
+                - text: High-performance processor for demanding tasks
+              - listitem [ref=e57]:
+                - generic [ref=e58]: 
+                - text: Ample storage with fast SSD technology
+              - listitem [ref=e59]:
+                - generic [ref=e60]: 
+                - text: Latest generation hardware
+              - listitem [ref=e61]:
+                - generic [ref=e62]: 
+                - text: Enterprise-grade security features
+              - listitem [ref=e63]:
+                - generic [ref=e64]: 
+                - text: "Security score:"
+                - strong [ref=e65]: 92%
+                - text: (Excellent)
+              - listitem [ref=e66]:
+                - generic [ref=e67]: 
+                - text: Compatible with modern business software
+        - generic [ref=e70]:
+          - heading " Hardware Benchmark Summary" [level=4] [ref=e71]:
+            - generic [ref=e72]: 
+            - text: Hardware Benchmark Summary
+          - paragraph [ref=e73]: Benchmark data unavailable for this device.
+      - text:                               
+    - generic [ref=e75]:
+      - button " Back to Search" [ref=e76] [cursor=pointer]:
+        - generic [ref=e77]: 
+        - text: Back to Search
+      - button " Print Guide" [ref=e78] [cursor=pointer]:
+        - generic [ref=e79]: 
+        - text: Print Guide
+      - button " Download Security Checklist" [ref=e80] [cursor=pointer]:
+        - generic [ref=e81]: 
+        - text: Download Security Checklist

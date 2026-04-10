@@ -1,0 +1,194 @@
+- generic [ref=e1]:
+  - generic [ref=e4]:
+    - img "Dell XPS 13 Plus" [ref=e6]
+    - generic [ref=e7]:
+      - heading "Dell XPS 13 Plus" [level=1] [ref=e8]
+      - paragraph [ref=e9]: Laptops • Windows 11 • Unknown
+      - generic [ref=e10]: £1299.0
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]: 
+          - text: Excellent (92%)
+        - generic [ref=e14]:
+          - generic [ref=e15]: 
+          - text: Enterprise Ready
+        - generic [ref=e16]:
+          - generic [ref=e17]: 
+          - text: Latest Hardware
+  - generic [ref=e18]:
+    - tablist [ref=e19]:
+      - tab " Overview" [ref=e20] [cursor=pointer]:
+        - generic [ref=e21]: 
+        - text: Overview
+      - tab " Security Guide" [active] [selected] [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: 
+        - text: Security Guide
+      - tab " Compare" [ref=e24] [cursor=pointer]:
+        - generic [ref=e25]: 
+        - text: Compare
+      - tab " Purchase" [ref=e26] [cursor=pointer]:
+        - generic [ref=e27]: 
+        - text: Purchase
+    - generic [ref=e28]:
+      - text:          
+      - tabpanel " Security Guide" [ref=e82]:
+        - generic [ref=e84]:
+          - heading " Complete Security Setup Guide" [level=3] [ref=e85]:
+            - generic [ref=e86]: 
+            - text: Complete Security Setup Guide
+          - paragraph [ref=e87]: Follow these steps to ensure your device is properly secured before deployment.
+        - generic [ref=e88]:
+          - generic [ref=e89]:
+            - heading " Essential Security Settings" [level=4] [ref=e90]:
+              - generic [ref=e91]: 
+              - text: Essential Security Settings
+            - generic [ref=e92]:
+              - heading " Enable Full Disk Encryption" [level=6] [ref=e93]:
+                - generic [ref=e94]: 
+                - text: Enable Full Disk Encryption
+              - paragraph [ref=e95]: Enable BitLocker in Control Panel > System and Security
+            - generic [ref=e96]:
+              - heading " Configure Strong Authentication" [level=6] [ref=e97]:
+                - generic [ref=e98]: 
+                - text: Configure Strong Authentication
+              - paragraph [ref=e99]: Set up Windows Hello/Touch ID and require complex passwords
+            - generic [ref=e100]:
+              - heading " Enable Automatic Updates" [level=6] [ref=e101]:
+                - generic [ref=e102]: 
+                - text: Enable Automatic Updates
+              - paragraph [ref=e103]: Configure automatic security updates for OS and applications
+            - generic [ref=e104]:
+              - heading " Secure Network Settings" [level=6] [ref=e105]:
+                - generic [ref=e106]: 
+                - text: Secure Network Settings
+              - paragraph [ref=e107]: Disable auto-connect to open networks and enable firewall
+          - generic [ref=e108]:
+            - heading " Recommended Security Software" [level=4] [ref=e109]:
+              - generic [ref=e110]: 
+              - text: Recommended Security Software
+            - generic [ref=e111]:
+              - heading " Enterprise Antivirus" [level=6] [ref=e112]:
+                - generic [ref=e113]: 
+                - text: Enterprise Antivirus
+              - list [ref=e114]:
+                - listitem [ref=e115]: Windows Defender (Built-in) - Recommended
+                - listitem [ref=e116]: Bitdefender GravityZone - Enterprise
+                - listitem [ref=e117]: CrowdStrike Falcon - Advanced
+            - generic [ref=e118]:
+              - heading " Password Management" [level=6] [ref=e119]:
+                - generic [ref=e120]: 
+                - text: Password Management
+              - list [ref=e121]:
+                - listitem [ref=e122]: Microsoft Authenticator
+                - listitem [ref=e123]: 1Password Business
+                - listitem [ref=e124]: Bitwarden Enterprise
+            - generic [ref=e125]:
+              - heading " Backup & Recovery" [level=6] [ref=e126]:
+                - generic [ref=e127]: 
+                - text: Backup & Recovery
+              - list [ref=e128]:
+                - listitem [ref=e129]: OneDrive for Business
+                - listitem [ref=e130]: Veeam Backup
+                - listitem [ref=e131]: Acronis Cyber Backup
+            - generic [ref=e132]:
+              - heading " Monitoring & Compliance" [level=6] [ref=e133]:
+                - generic [ref=e134]: 
+                - text: Monitoring & Compliance
+              - list [ref=e135]:
+                - listitem [ref=e136]: Microsoft Intune (MDM)
+                - listitem [ref=e137]: System monitoring tools
+                - listitem [ref=e138]: Compliance reporting
+        - generic [ref=e139]:
+          - generic [ref=e141]:
+            - heading " Detected Risks" [level=4] [ref=e142]:
+              - generic [ref=e143]: 
+              - text: Detected Risks
+            - list [ref=e144]:
+              - listitem [ref=e145]: Potential OEM preinstalled software increases attack surface
+          - generic [ref=e147]:
+            - heading " Mitigations & Hardening" [level=4] [ref=e148]:
+              - generic [ref=e149]: 
+              - text: Mitigations & Hardening
+            - list [ref=e150]:
+              - listitem [ref=e151]: Enable BitLocker with TPM 2.0 and PIN; use Windows Hello for Business
+              - listitem [ref=e152]: Use clean OS image or remove bloatware; consider Windows Autopilot/MDM
+        - generic [ref=e155]:
+          - heading " Tailored Recommendations" [level=4] [ref=e156]:
+            - generic [ref=e157]: 
+            - text: Tailored Recommendations
+          - generic [ref=e158]:
+            - generic [ref=e159]:
+              - heading "Software" [level=6] [ref=e160]
+              - list [ref=e161]:
+                - listitem [ref=e162]: Microsoft Defender for Endpoint
+                - listitem [ref=e163]: BitLocker
+                - listitem [ref=e164]: Microsoft Intune/Autopilot
+            - generic [ref=e165]:
+              - heading "Hardware" [level=6] [ref=e166]
+              - list [ref=e167]:
+                - listitem [ref=e168]: FIDO2 security keys (e.g., YubiKey)
+                - listitem [ref=e169]: Privacy screen
+                - listitem [ref=e170]: Webcam cover
+            - generic [ref=e171]:
+              - heading "Settings" [level=6] [ref=e172]
+              - list [ref=e173]:
+                - listitem [ref=e174]: Require TPM 2.0 + Secure Boot
+                - listitem [ref=e175]: Enforce WDAC/Smart App Control
+                - listitem [ref=e176]: Disable legacy protocols (SMBv1, NTLM where possible)
+        - generic [ref=e179]:
+          - heading " Debloat & Performance Tools" [level=4] [ref=e180]:
+            - generic [ref=e181]: 
+            - text: Debloat & Performance Tools
+          - paragraph [ref=e182]: No debloat tool recommendations available for this platform.
+        - generic [ref=e185]:
+          - heading " Automated Hardening Script" [level=4] [ref=e186]:
+            - generic [ref=e187]: 
+            - text: Automated Hardening Script
+          - paragraph [ref=e188]: Select the actions you want to include and generate a downloadable script to apply them automatically.
+          - generic [ref=e189]:
+            - generic [ref=e190]:
+              - generic [ref=e191]:
+                - heading "Core Security" [level=6] [ref=e192]
+                - generic [ref=e193]:
+                  - checkbox "Enable Full Disk Encryption" [checked] [ref=e194]
+                  - generic [ref=e195]: Enable Full Disk Encryption
+                - generic [ref=e196]:
+                  - checkbox "Enforce Firewall" [checked] [ref=e197]
+                  - generic [ref=e198]: Enforce Firewall
+                - generic [ref=e199]:
+                  - checkbox "Enable Automatic Updates" [checked] [ref=e200]
+                  - generic [ref=e201]: Enable Automatic Updates
+              - generic [ref=e202]:
+                - heading "Hardening" [level=6] [ref=e203]
+                - generic [ref=e204]:
+                  - checkbox "Disable SMBv1 / Legacy Protocols (Win)" [ref=e205]
+                  - generic [ref=e206]: Disable SMBv1 / Legacy Protocols (Win)
+                - generic [ref=e207]:
+                  - checkbox "Harden PowerShell Execution Policy (Win)" [ref=e208]
+                  - generic [ref=e209]: Harden PowerShell Execution Policy (Win)
+                - generic [ref=e210]:
+                  - checkbox "Remove Common OEM Bloatware (Win)" [checked] [ref=e211]
+                  - generic [ref=e212]: Remove Common OEM Bloatware (Win)
+              - generic [ref=e213]:
+                - heading "Platform-Specific" [level=6] [ref=e214]
+                - generic [ref=e215]:
+                  - checkbox "Smart App Control Note (Win)" [ref=e216]
+                  - generic [ref=e217]: Smart App Control Note (Win)
+            - generic [ref=e218]:
+              - generic [ref=e219]: Script is generated client request time; review before running with admin privileges.
+              - button " Download Script" [ref=e220] [cursor=pointer]:
+                - generic [ref=e221]: 
+                - text: Download Script
+            - group [ref=e223]:
+              - generic "Integrity & Signing Instructions" [ref=e224] [cursor=pointer]
+      - text:              
+    - generic [ref=e75]:
+      - button " Back to Search" [ref=e76] [cursor=pointer]:
+        - generic [ref=e77]: 
+        - text: Back to Search
+      - button " Print Guide" [ref=e78] [cursor=pointer]:
+        - generic [ref=e79]: 
+        - text: Print Guide
+      - button " Download Security Checklist" [ref=e80] [cursor=pointer]:
+        - generic [ref=e81]: 
+        - text: Download Security Checklist

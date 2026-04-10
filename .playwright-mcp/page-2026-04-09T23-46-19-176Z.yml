@@ -1,0 +1,512 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - checkbox
+  - generic [ref=e5]:
+    - heading " Device Provisioning Toolkit" [level=1] [ref=e6]:
+      - generic [ref=e7]: 
+      - text: Device Provisioning Toolkit
+    - paragraph [ref=e8]: Secure devices tailored for consumers, businesses, and government with comprehensive security guidance and procurement assistance
+    - generic [ref=e9]:
+      - generic [ref=e10] [cursor=pointer]:
+        - generic [ref=e11]: 
+        - heading "Personal Use" [level=5] [ref=e12]
+        - paragraph [ref=e13]: Home users, students, personal computing
+      - generic [ref=e14] [cursor=pointer]:
+        - generic [ref=e15]: 
+        - heading "Business Use" [level=5] [ref=e16]
+        - paragraph [ref=e17]: Enterprise, small business, professional work
+      - generic [ref=e18] [cursor=pointer]:
+        - generic [ref=e19]: 
+        - heading "Government Use" [level=5] [ref=e20]
+        - paragraph [ref=e21]: Public sector, high-security requirements
+    - generic [ref=e22]:
+      - button " Find Your Device" [active] [ref=e23] [cursor=pointer]:
+        - generic [ref=e24]: 
+        - text: Find Your Device
+      - button " Refresh Device Data" [ref=e25] [cursor=pointer]:
+        - generic [ref=e26]: 
+        - text: Refresh Device Data
+  - generic [ref=e330]:
+    - generic [ref=e331]:
+      - heading " Device Search & Filtering" [level=3] [ref=e332]:
+        - generic [ref=e333]: 
+        - text: Device Search & Filtering
+      - paragraph [ref=e334]: Find the perfect secure device based on your specific requirements
+    - generic [ref=e336]:
+      - generic [ref=e337]:
+        - generic [ref=e338]:
+          - generic [ref=e339]:
+            - generic [ref=e340]: 
+            - text: Search for a device
+          - textbox " Search for a device" [ref=e341]:
+            - /placeholder: Search devices by name, brand, or model...
+        - generic [ref=e342]:
+          - generic [ref=e343]:
+            - generic [ref=e344]: 
+            - text: Use Case
+          - combobox " Use Case" [ref=e345]:
+            - option "Personal" [selected]
+            - option "Work"
+            - option "Government"
+            - option "Education"
+        - generic [ref=e346]:
+          - generic [ref=e347]:
+            - generic [ref=e348]: 
+            - text: Device Type
+          - combobox " Device Type" [ref=e349]:
+            - option "All Types" [selected]
+            - option "Desktop PCs"
+            - option "Laptops"
+            - option "Tablets"
+        - generic [ref=e350]:
+          - generic [ref=e351]:
+            - generic [ref=e352]: 
+            - text: Operating System
+          - combobox " Operating System" [ref=e353]:
+            - option "Any OS" [selected]
+            - option "Windows"
+            - option "macOS"
+            - option "Linux"
+            - option "ChromeOS"
+        - generic [ref=e354]:
+          - generic [ref=e355]:
+            - generic [ref=e356]: 
+            - text: Price Range
+          - generic [ref=e357]:
+            - slider [ref=e358]: "100"
+            - slider [ref=e359]: "1500"
+            - generic [ref=e360]:
+              - generic [ref=e361]: £100
+              - generic [ref=e362]: £1500
+        - generic [ref=e363]:
+          - generic [ref=e364]:
+            - generic [ref=e365]: 
+            - text: Preferred Brand
+          - combobox " Preferred Brand" [ref=e366]:
+            - option "Any Brand" [selected]
+            - option "Apple"
+            - option "Dell"
+            - option "HP"
+            - option "Lenovo"
+            - option "Microsoft"
+            - option "ASUS"
+            - option "Acer"
+      - button " Show Advanced Filters" [ref=e368] [cursor=pointer]:
+        - generic [ref=e369]: 
+        - text: Show Advanced Filters
+      - text: 
+      - generic [ref=e370]:
+        - button " Find Secure Devices" [ref=e371] [cursor=pointer]:
+          - generic [ref=e372]: 
+          - text: Find Secure Devices
+        - button " Close" [ref=e373] [cursor=pointer]:
+          - generic [ref=e374]: 
+          - text: Close
+  - generic [ref=e27]:
+    - heading " Secure Recommended Devices" [level=2] [ref=e28]:
+      - generic [ref=e29]: 
+      - text: Secure Recommended Devices
+    - paragraph [ref=e30]: Curated selection of enterprise-grade devices with verified security features and compliance standards
+    - generic [ref=e32]:
+      - generic [ref=e33] [cursor=pointer]:
+        - img "Apple MacBook Air M2" [ref=e34]
+        - generic [ref=e35]:
+          - generic [ref=e36]: Apple MacBook Air M2
+          - generic [ref=e37]:
+            - paragraph [ref=e38]:
+              - strong [ref=e39]: Laptops
+              - text: 🔒 Good • 74%
+            - paragraph [ref=e40]: 3.2 GHz • 8GB • 256GB
+            - paragraph [ref=e41]: 13.6" screen
+            - paragraph [ref=e42]:
+              - text: "Benchmark:"
+              - strong [ref=e43]: 46/100
+              - text: (CPU 64, RAM 12, Storage 13)
+          - generic [ref=e44]: £1149.0
+          - generic [ref=e45]:
+            - link "Amazon" [ref=e46]:
+              - /url: https://amazon.co.uk/s?k=Apple+MacBook+Air+M2
+            - link "Currys" [ref=e47]:
+              - /url: https://currys.co.uk/search?q=Apple+MacBook+Air+M2
+            - link "Johnlewis" [ref=e48]:
+              - /url: https://johnlewis.com/search?search-term=Apple+MacBook+Air+M2
+            - link "Apple" [ref=e49]:
+              - /url: https://apple.com/uk/shop/buy-laptops
+      - generic [ref=e50] [cursor=pointer]:
+        - img "Dell XPS 13 Plus" [ref=e51]
+        - generic [ref=e52]:
+          - generic [ref=e53]: Dell XPS 13 Plus
+          - generic [ref=e54]:
+            - paragraph [ref=e55]:
+              - strong [ref=e56]: Laptops
+              - text: 🔒 Excellent • 92%
+            - paragraph [ref=e57]: 4.7 GHz • 16GB • 512GB
+            - paragraph [ref=e58]: 13.4" screen
+            - paragraph [ref=e59]:
+              - text: "Benchmark:"
+              - strong [ref=e60]: 66/100
+              - text: (CPU 94, RAM 25, Storage 26)
+          - generic [ref=e61]: £1299.0
+          - generic [ref=e62]:
+            - link "Amazon" [ref=e63]:
+              - /url: https://amazon.co.uk/s?k=Dell+XPS+13+Plus
+            - link "Currys" [ref=e64]:
+              - /url: https://currys.co.uk/search?q=Dell+XPS+13+Plus
+            - link "Johnlewis" [ref=e65]:
+              - /url: https://johnlewis.com/search?search-term=Dell+XPS+13+Plus
+      - generic [ref=e66] [cursor=pointer]:
+        - img "Lenovo ThinkPad X1 Carbon Gen 11" [ref=e67]
+        - generic [ref=e68]:
+          - generic [ref=e69]: Lenovo ThinkPad X1 Carbon Gen 11
+          - generic [ref=e70]:
+            - paragraph [ref=e71]:
+              - strong [ref=e72]: Laptops
+              - text: 🔒 Excellent • 94%
+            - paragraph [ref=e73]: 4.9 GHz • 16GB • 512GB
+            - paragraph [ref=e74]: 14.0" screen
+            - paragraph [ref=e75]:
+              - text: "Benchmark:"
+              - strong [ref=e76]: 68/100
+              - text: (CPU 98, RAM 25, Storage 26)
+          - generic [ref=e77]: £1599.0
+          - generic [ref=e78]:
+            - link "Amazon" [ref=e79]:
+              - /url: https://amazon.co.uk/s?k=Lenovo+ThinkPad+X1+Carbon+Gen+11
+            - link "Currys" [ref=e80]:
+              - /url: https://currys.co.uk/search?q=Lenovo+ThinkPad+X1+Carbon+Gen+11
+            - link "Johnlewis" [ref=e81]:
+              - /url: https://johnlewis.com/search?search-term=Lenovo+ThinkPad+X1+Carbon+Gen+11
+      - generic [ref=e82] [cursor=pointer]:
+        - img "HP Spectre x360 14" [ref=e83]
+        - generic [ref=e84]:
+          - generic [ref=e85]: HP Spectre x360 14
+          - generic [ref=e86]:
+            - paragraph [ref=e87]:
+              - strong [ref=e88]: Laptops
+              - text: 🔒 Excellent • 92%
+            - paragraph [ref=e89]: 4.7 GHz • 16GB • 1000GB
+            - paragraph [ref=e90]: 13.5" screen
+            - paragraph [ref=e91]:
+              - text: "Benchmark:"
+              - strong [ref=e92]: 70/100
+              - text: (CPU 94, RAM 25, Storage 50)
+          - generic [ref=e93]: £1399.0
+          - generic [ref=e94]:
+            - link "Amazon" [ref=e95]:
+              - /url: https://amazon.co.uk/s?k=HP+Spectre+x360+14
+            - link "Currys" [ref=e96]:
+              - /url: https://currys.co.uk/search?q=HP+Spectre+x360+14
+            - link "Johnlewis" [ref=e97]:
+              - /url: https://johnlewis.com/search?search-term=HP+Spectre+x360+14
+      - generic [ref=e98] [cursor=pointer]:
+        - img "Microsoft Surface Laptop 5" [ref=e99]
+        - generic [ref=e100]:
+          - generic [ref=e101]: Microsoft Surface Laptop 5
+          - generic [ref=e102]:
+            - paragraph [ref=e103]:
+              - strong [ref=e104]: Laptops
+              - text: 🔒 Good • 84%
+            - paragraph [ref=e105]: 4.7 GHz • 8GB • 256GB
+            - paragraph [ref=e106]: 13.5" screen
+            - paragraph [ref=e107]:
+              - text: "Benchmark:"
+              - strong [ref=e108]: 59/100
+              - text: (CPU 94, RAM 12, Storage 13)
+          - generic [ref=e109]: £999.0
+          - generic [ref=e110]:
+            - link "Amazon" [ref=e111]:
+              - /url: https://amazon.co.uk/s?k=Microsoft+Surface+Laptop+5
+            - link "Currys" [ref=e112]:
+              - /url: https://currys.co.uk/search?q=Microsoft+Surface+Laptop+5
+            - link "Johnlewis" [ref=e113]:
+              - /url: https://johnlewis.com/search?search-term=Microsoft+Surface+Laptop+5
+            - link "Microsoft" [ref=e114]:
+              - /url: https://microsoft.com/en-gb/store/b/pc?q=Microsoft+Surface+Laptop+5
+      - generic [ref=e115] [cursor=pointer]:
+        - img "Apple iPad Pro 12.9\"" [ref=e116]
+        - generic [ref=e117]:
+          - generic [ref=e118]: Apple iPad Pro 12.9"
+          - generic [ref=e119]:
+            - paragraph [ref=e120]:
+              - strong [ref=e121]: Tablet
+              - text: 🔒 Adequate • 66%
+            - paragraph [ref=e122]: 3.2 GHz • 8GB • 128GB
+            - paragraph [ref=e123]: 12.9" screen
+            - paragraph [ref=e124]:
+              - text: "Benchmark:"
+              - strong [ref=e125]: 43/100
+              - text: (CPU 64, RAM 12, Storage 6)
+          - generic [ref=e126]: £1079.0
+          - generic [ref=e127]:
+            - link "Amazon" [ref=e128]:
+              - /url: https://amazon.co.uk/s?k=Apple+iPad+Pro+12.9%22
+            - link "Currys" [ref=e129]:
+              - /url: https://currys.co.uk/search?q=Apple+iPad+Pro+12.9%22
+            - link "Johnlewis" [ref=e130]:
+              - /url: https://johnlewis.com/search?search-term=Apple+iPad+Pro+12.9%22
+            - link "Apple" [ref=e131]:
+              - /url: https://apple.com/uk/shop/buy-tablet
+      - generic [ref=e132] [cursor=pointer]:
+        - img "Samsung Galaxy Tab S9+" [ref=e133]
+        - generic [ref=e134]:
+          - generic [ref=e135]: Samsung Galaxy Tab S9+
+          - generic [ref=e136]:
+            - paragraph [ref=e137]:
+              - strong [ref=e138]: Tablet
+              - text: 🔒 Adequate • 63%
+            - paragraph [ref=e139]: 3.0 GHz • 12GB • 256GB
+            - paragraph [ref=e140]: 12.4" screen
+            - paragraph [ref=e141]:
+              - text: "Benchmark:"
+              - strong [ref=e142]: 43/100
+              - text: (CPU 60, RAM 19, Storage 13)
+          - generic [ref=e143]: £799.0
+          - generic [ref=e144]:
+            - link "Amazon" [ref=e145]:
+              - /url: https://amazon.co.uk/s?k=Samsung+Galaxy+Tab+S9%2B
+            - link "Currys" [ref=e146]:
+              - /url: https://currys.co.uk/search?q=Samsung+Galaxy+Tab+S9%2B
+            - link "Johnlewis" [ref=e147]:
+              - /url: https://johnlewis.com/search?search-term=Samsung+Galaxy+Tab+S9%2B
+      - generic [ref=e148] [cursor=pointer]:
+        - img "Apple iMac 24\" M3" [ref=e149]
+        - generic [ref=e150]:
+          - generic [ref=e151]: Apple iMac 24" M3
+          - generic [ref=e152]:
+            - paragraph [ref=e153]:
+              - strong [ref=e154]: PCs
+              - text: 🔒 Good • 74%
+            - paragraph [ref=e155]: 3.2 GHz • 8GB • 256GB
+            - paragraph [ref=e156]: 24.0" screen
+            - paragraph [ref=e157]:
+              - text: "Benchmark:"
+              - strong [ref=e158]: 46/100
+              - text: (CPU 64, RAM 12, Storage 13)
+          - generic [ref=e159]: £1299.0
+          - generic [ref=e160]:
+            - link "Amazon" [ref=e161]:
+              - /url: https://amazon.co.uk/s?k=Apple+iMac+24%22+M3
+            - link "Currys" [ref=e162]:
+              - /url: https://currys.co.uk/search?q=Apple+iMac+24%22+M3
+            - link "Johnlewis" [ref=e163]:
+              - /url: https://johnlewis.com/search?search-term=Apple+iMac+24%22+M3
+            - link "Apple" [ref=e164]:
+              - /url: https://apple.com/uk/shop/buy-pcs
+      - generic [ref=e165] [cursor=pointer]:
+        - img "HP Pavilion All-in-One 27" [ref=e166]
+        - generic [ref=e167]:
+          - generic [ref=e168]: HP Pavilion All-in-One 27
+          - generic [ref=e169]:
+            - paragraph [ref=e170]:
+              - strong [ref=e171]: PCs
+              - text: 🔒 Good • 80%
+            - paragraph [ref=e172]: 3.5 GHz • 16GB • 512GB
+            - paragraph [ref=e173]: 27.0" screen
+            - paragraph [ref=e174]:
+              - text: "Benchmark:"
+              - strong [ref=e175]: 55/100
+              - text: (CPU 70, RAM 25, Storage 26)
+          - generic [ref=e176]: £899.0
+          - generic [ref=e177]:
+            - link "Amazon" [ref=e178]:
+              - /url: https://amazon.co.uk/s?k=HP+Pavilion+All-in-One+27
+            - link "Currys" [ref=e179]:
+              - /url: https://currys.co.uk/search?q=HP+Pavilion+All-in-One+27
+            - link "Johnlewis" [ref=e180]:
+              - /url: https://johnlewis.com/search?search-term=HP+Pavilion+All-in-One+27
+      - generic [ref=e181] [cursor=pointer]:
+        - img "Dell OptiPlex 7000 Tower" [ref=e182]
+        - generic [ref=e183]:
+          - generic [ref=e184]: Dell OptiPlex 7000 Tower
+          - generic [ref=e185]:
+            - paragraph [ref=e186]:
+              - strong [ref=e187]: PCs
+              - text: 🔒 Excellent • 89%
+            - paragraph [ref=e188]: 4.4 GHz • 16GB • 512GB
+            - paragraph [ref=e189]: 24.0" screen
+            - paragraph [ref=e190]:
+              - text: "Benchmark:"
+              - strong [ref=e191]: 63/100
+              - text: (CPU 88, RAM 25, Storage 26)
+          - generic [ref=e192]: £799.0
+          - generic [ref=e193]:
+            - link "Amazon" [ref=e194]:
+              - /url: https://amazon.co.uk/s?k=Dell+OptiPlex+7000+Tower
+            - link "Currys" [ref=e195]:
+              - /url: https://currys.co.uk/search?q=Dell+OptiPlex+7000+Tower
+            - link "Johnlewis" [ref=e196]:
+              - /url: https://johnlewis.com/search?search-term=Dell+OptiPlex+7000+Tower
+  - generic [ref=e197]:
+    - heading " Live Listings (Security Assessed)" [level=2] [ref=e198]:
+      - generic [ref=e199]: 
+      - text: Live Listings (Security Assessed)
+    - paragraph [ref=e200]: Fresh results from trusted retailers, automatically assessed for security posture
+    - generic [ref=e201]:
+      - generic [ref=e202] [cursor=pointer]:
+        - img "£1,499.99" [ref=e203]
+        - generic [ref=e204]:
+          - generic [ref=e205]: £1,499.99
+          - generic [ref=e206]:
+            - paragraph [ref=e207]:
+              - strong [ref=e208]: Laptops
+              - text: 🔒 Adequate • 62%
+            - paragraph [ref=e209]: 3.0 GHz • 8GB • 256GB
+            - paragraph [ref=e210]:
+              - text: 13.0" display •
+              - emphasis [ref=e211]: Amazon
+          - generic [ref=e212]:
+            - generic [ref=e213]: £1499.0
+            - generic [ref=e214]:
+              - link "Amazon" [ref=e215]:
+                - /url: https://amazon.co.uk/s?k=%C2%A31%2C499.99
+              - link "Currys" [ref=e216]:
+                - /url: https://currys.co.uk/search?q=%C2%A31%2C499.99
+              - link "Johnlewis" [ref=e217]:
+                - /url: https://johnlewis.com/search?search-term=%C2%A31%2C499.99
+      - generic [ref=e218] [cursor=pointer]:
+        - img "£829.99" [ref=e219]
+        - generic [ref=e220]:
+          - generic [ref=e221]: £829.99
+          - generic [ref=e222]:
+            - paragraph [ref=e223]:
+              - strong [ref=e224]: Laptops
+              - text: 🔒 Adequate • 62%
+            - paragraph [ref=e225]: 3.0 GHz • 8GB • 256GB
+            - paragraph [ref=e226]:
+              - text: 13.0" display •
+              - emphasis [ref=e227]: Amazon
+          - generic [ref=e228]:
+            - generic [ref=e229]: £829.0
+            - generic [ref=e230]:
+              - link "Amazon" [ref=e231]:
+                - /url: https://amazon.co.uk/s?k=%C2%A3829.99
+              - link "Currys" [ref=e232]:
+                - /url: https://currys.co.uk/search?q=%C2%A3829.99
+              - link "Johnlewis" [ref=e233]:
+                - /url: https://johnlewis.com/search?search-term=%C2%A3829.99
+      - generic [ref=e234] [cursor=pointer]:
+        - img "£1,199.99" [ref=e235]
+        - generic [ref=e236]:
+          - generic [ref=e237]: £1,199.99
+          - generic [ref=e238]:
+            - paragraph [ref=e239]:
+              - strong [ref=e240]: Laptops
+              - text: 🔒 Adequate • 62%
+            - paragraph [ref=e241]: 3.0 GHz • 8GB • 256GB
+            - paragraph [ref=e242]:
+              - text: 13.0" display •
+              - emphasis [ref=e243]: Amazon
+          - generic [ref=e244]:
+            - generic [ref=e245]: £1199.0
+            - generic [ref=e246]:
+              - link "Amazon" [ref=e247]:
+                - /url: https://amazon.co.uk/s?k=%C2%A31%2C199.99
+              - link "Currys" [ref=e248]:
+                - /url: https://currys.co.uk/search?q=%C2%A31%2C199.99
+              - link "Johnlewis" [ref=e249]:
+                - /url: https://johnlewis.com/search?search-term=%C2%A31%2C199.99
+      - generic [ref=e250] [cursor=pointer]:
+        - img "£329.99" [ref=e251]
+        - generic [ref=e252]:
+          - generic [ref=e253]: £329.99
+          - generic [ref=e254]:
+            - paragraph [ref=e255]:
+              - strong [ref=e256]: Laptops
+              - text: 🔒 Adequate • 62%
+            - paragraph [ref=e257]: 3.0 GHz • 8GB • 256GB
+            - paragraph [ref=e258]:
+              - text: 13.0" display •
+              - emphasis [ref=e259]: Amazon
+          - generic [ref=e260]:
+            - generic [ref=e261]: £329.0
+            - generic [ref=e262]:
+              - link "Amazon" [ref=e263]:
+                - /url: https://amazon.co.uk/s?k=%C2%A3329.99
+              - link "Currys" [ref=e264]:
+                - /url: https://currys.co.uk/search?q=%C2%A3329.99
+              - link "Johnlewis" [ref=e265]:
+                - /url: https://johnlewis.com/search?search-term=%C2%A3329.99
+      - generic [ref=e266] [cursor=pointer]:
+        - img "Unknown Device" [ref=e267]
+        - generic [ref=e268]:
+          - generic [ref=e269]: Unknown Device
+          - generic [ref=e270]:
+            - paragraph [ref=e271]:
+              - strong [ref=e272]: Laptops
+              - text: 🔒 Adequate • 62%
+            - paragraph [ref=e273]: 3.0 GHz • 8GB • 256GB
+            - paragraph [ref=e274]:
+              - text: 13.0" display •
+              - emphasis [ref=e275]: Amazon
+          - generic [ref=e276]:
+            - generic [ref=e277]: £0
+            - generic [ref=e278]:
+              - link "Amazon" [ref=e279]:
+                - /url: https://amazon.co.uk/s?k=Unknown+Device
+              - link "Currys" [ref=e280]:
+                - /url: https://currys.co.uk/search?q=Unknown+Device
+              - link "Johnlewis" [ref=e281]:
+                - /url: https://johnlewis.com/search?search-term=Unknown+Device
+      - generic [ref=e282] [cursor=pointer]:
+        - img "£209.99" [ref=e283]
+        - generic [ref=e284]:
+          - generic [ref=e285]: £209.99
+          - generic [ref=e286]:
+            - paragraph [ref=e287]:
+              - strong [ref=e288]: Laptops
+              - text: 🔒 Adequate • 62%
+            - paragraph [ref=e289]: 3.0 GHz • 8GB • 256GB
+            - paragraph [ref=e290]:
+              - text: 13.0" display •
+              - emphasis [ref=e291]: Amazon
+          - generic [ref=e292]:
+            - generic [ref=e293]: £209.0
+            - generic [ref=e294]:
+              - link "Amazon" [ref=e295]:
+                - /url: https://amazon.co.uk/s?k=%C2%A3209.99
+              - link "Currys" [ref=e296]:
+                - /url: https://currys.co.uk/search?q=%C2%A3209.99
+              - link "Johnlewis" [ref=e297]:
+                - /url: https://johnlewis.com/search?search-term=%C2%A3209.99
+      - generic [ref=e298] [cursor=pointer]:
+        - img "£309.97" [ref=e299]
+        - generic [ref=e300]:
+          - generic [ref=e301]: £309.97
+          - generic [ref=e302]:
+            - paragraph [ref=e303]:
+              - strong [ref=e304]: Laptops
+              - text: 🔒 Adequate • 62%
+            - paragraph [ref=e305]: 3.0 GHz • 8GB • 256GB
+            - paragraph [ref=e306]:
+              - text: 13.0" display •
+              - emphasis [ref=e307]: Amazon
+          - generic [ref=e308]:
+            - generic [ref=e309]: £309.0
+            - generic [ref=e310]:
+              - link "Amazon" [ref=e311]:
+                - /url: https://amazon.co.uk/s?k=%C2%A3309.97
+              - link "Currys" [ref=e312]:
+                - /url: https://currys.co.uk/search?q=%C2%A3309.97
+              - link "Johnlewis" [ref=e313]:
+                - /url: https://johnlewis.com/search?search-term=%C2%A3309.97
+      - generic [ref=e314] [cursor=pointer]:
+        - img "£404.97" [ref=e315]
+        - generic [ref=e316]:
+          - generic [ref=e317]: £404.97
+          - generic [ref=e318]:
+            - paragraph [ref=e319]:
+              - strong [ref=e320]: Laptops
+              - text: 🔒 Adequate • 62%
+            - paragraph [ref=e321]: 3.0 GHz • 8GB • 256GB
+            - paragraph [ref=e322]:
+              - text: 13.0" display •
+              - emphasis [ref=e323]: Amazon
+          - generic [ref=e324]:
+            - generic [ref=e325]: £404.0
+            - generic [ref=e326]:
+              - link "Amazon" [ref=e327]:
+                - /url: https://amazon.co.uk/s?k=%C2%A3404.97
+              - link "Currys" [ref=e328]:
+                - /url: https://currys.co.uk/search?q=%C2%A3404.97
+              - link "Johnlewis" [ref=e329]:
+                - /url: https://johnlewis.com/search?search-term=%C2%A3404.97
