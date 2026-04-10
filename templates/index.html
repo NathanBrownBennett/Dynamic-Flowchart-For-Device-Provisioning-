@@ -17,8 +17,29 @@
         </label>
     </div>
 
+    <!-- Scroll Morph Nav -->
+    <nav id="scroll-morph-nav" class="scroll-morph-nav" aria-label="Page sections">
+        <div class="scroll-morph-nav-inner">
+            <a class="scroll-brand" href="#hero">
+                <i class="fas fa-shield-alt"></i>
+                <span>Device Provisioning Toolkit</span>
+            </a>
+            <div class="scroll-nav-links">
+                <a class="scroll-nav-link" href="#device-form" data-target="device-form" data-fallback="hero">Find Device</a>
+                <a class="scroll-nav-link" href="#recommended-devices" data-target="recommended-devices" data-fallback="hero">Recommended</a>
+                <a class="scroll-nav-link" href="#live-listings" data-target="live-listings" data-fallback="recommended-devices">Live Listings</a>
+                <a class="scroll-nav-link" href="#search-results" data-target="search-results" data-fallback="device-form">Results</a>
+            </div>
+            <div class="scroll-nav-user-types">
+                <button type="button" class="scroll-type-btn" onclick="selectUserType('Personal')">Personal</button>
+                <button type="button" class="scroll-type-btn" onclick="selectUserType('Work')">Business</button>
+                <button type="button" class="scroll-type-btn" onclick="selectUserType('Government')">Government</button>
+            </div>
+        </div>
+    </nav>
+
     <!-- Hero Section -->
-    <div class="hero-section">
+    <div id="hero" class="hero-section expand-on-scroll is-expanded" data-nav-title="Home">
         <h1 class="hero-title">
             <i class="fas fa-shield-alt"></i>
             Device Provisioning Toolkit
@@ -58,7 +79,7 @@
     </div>
 
     <!-- Device Search Form -->
-    <div id="device-form" class="device-form-container">
+    <div id="device-form" class="device-form-container expand-on-scroll" data-nav-title="Find Device">
         <div class="form-header">
             <h3><i class="fas fa-filter"></i> Device Search & Filtering</h3>
             <p>Find the perfect secure device based on your specific requirements</p>
@@ -256,7 +277,7 @@
     </div>
 
     <!-- Recommended Devices Section -->
-    <div class="recommendations-section">
+    <div id="recommended-devices" class="recommendations-section expand-on-scroll" data-nav-title="Recommended">
         <h2 class="section-title">
             <i class="fas fa-star"></i> Secure Recommended Devices
         </h2>
@@ -305,7 +326,7 @@
     </div>
 
     {% if live_listings and not form_submitted %}
-    <div class="recommendations-section">
+    <div id="live-listings" class="recommendations-section expand-on-scroll" data-nav-title="Live Listings">
         <h2 class="section-title">
             <i class="fas fa-bolt"></i> Live Listings (Security Assessed)
         </h2>
@@ -349,7 +370,7 @@
 
     <!-- Search Results Section -->
     {% if form_submitted %}
-    <div class="results-section">
+    <div id="search-results" class="results-section expand-on-scroll" data-nav-title="Results">
         <h3 class="section-title">Security-Verified Search Results</h3>
         {% if error_occurred %}
         <p class="alert alert-danger">There has been an error retrieving results from the database.</p>

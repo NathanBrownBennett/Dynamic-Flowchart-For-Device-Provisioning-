@@ -91,6 +91,115 @@
             font-size: 1.2rem;
             font-weight: bold;
         }
+        .clickable-reason {
+            background: linear-gradient(135deg, #e8f4f8, #f0f9ff);
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid #007bff;
+            margin: 6px 0;
+            transition: all 0.3s ease;
+            display: block;
+            font-weight: 500;
+            color: #333;
+            text-decoration: none;
+        }
+        .clickable-reason:hover {
+            background: linear-gradient(135deg, #d0e8f2, #dff4ff);
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.2);
+            color: #0c63e4;
+        }
+        .clickable-reason::before {
+            content: "▶ ";
+            color: #28a745;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2000;
+            animation: fadeIn 0.3s ease;
+            overflow-y: auto;
+        }
+        .modal-overlay.active {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 40px;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            max-width: 800px;
+            width: 95%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .modal-close {
+            float: right;
+            font-size: 32px;
+            font-weight: bold;
+            color: #aaa;
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 0;
+            line-height: 1;
+            width: auto;
+            transition: color 0.3s ease;
+        }
+        .modal-close:hover {
+            color: #000;
+        }
+        .modal-header {
+            color: #007bff;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            clear: both;
+            padding-top: 10px;
+        }
+        .modal-device {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        .breakdown-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #28a745;
+            margin: 12px 0;
+            line-height: 1.6;
+        }
+        .breakdown-item strong {
+            color: #007bff;
+        }
     </style>
 </head>
 <body>
@@ -200,29 +309,59 @@
                     </div>
                     <div class="col-md-6">
                         <div class="spec-card">
-                            <h4><i class="fas fa-award text-success"></i> Why This Device?</h4>
-                            <ul class="list-unstyled">
+                            <h4><i class="fas fa-award text-success"></i> Why This Device? <span style="font-size: 0.8rem; color: #666;">(Click any reason)</span></h4>
+                               <div class="why-device-reasons"
+                                   data-device-name="{{ device.name }}"
+                                   data-cpu="{{ device.cpu_speed or 0 }}"
+                                   data-ram="{{ device.ram or 0 }}"
+                                   data-storage="{{ device.storage or 0 }}"
+                                   data-screen-size="{{ device.screen_size or 0 }}"
+                                   data-os="{{ device.os or '' }}"
+                                   data-security-score="{{ device.security.score if device.security else 0 }}"
+                                   data-security-level="{{ device.security.level if device.security else 'Unknown' }}"
+                                   data-cpu-index="{{ device.benchmark.cpu_index if device.benchmark else 0 }}"
+                                   data-memory-index="{{ device.benchmark.memory_index if device.benchmark else 0 }}"
+                                   data-storage-index="{{ device.benchmark.storage_index if device.benchmark else 0 }}"
+                                   data-overall-index="{{ device.benchmark.overall_index if device.benchmark else 0 }}">
                                 {% if device.ram >= 16 %}
-                                <li><i class="fas fa-check-circle text-success"></i> Excellent multitasking with 16GB+ RAM</li>
+                                <a class="clickable-reason" onclick="showReasonDetail(this, 'multitasking')" title="Click for details">
+                                    <i class="fas fa-check-circle text-success"></i> Excellent multitasking with 16GB+ RAM
+                                </a>
                                 {% endif %}
                                 {% if device.cpu_speed >= 3.5 %}
-                                <li><i class="fas fa-check-circle text-success"></i> High-performance processor for demanding tasks</li>
+                                <a class="clickable-reason" onclick="showReasonDetail(this, 'performance')" title="Click for details">
+                                    <i class="fas fa-check-circle text-success"></i> High-performance processor for demanding tasks
+                                </a>
                                 {% endif %}
                                 {% if device.storage >= 512 %}
-                                <li><i class="fas fa-check-circle text-success"></i> Ample storage with fast SSD technology</li>
+                                <a class="clickable-reason" onclick="showReasonDetail(this, 'storage')" title="Click for details">
+                                    <i class="fas fa-check-circle text-success"></i> Ample storage with fast SSD technology
+                                </a>
                                 {% endif %}
-                                <li><i class="fas fa-check-circle text-success"></i> Latest generation hardware</li>
-                                <li><i class="fas fa-check-circle text-success"></i> Enterprise-grade security features</li>
+                                <a class="clickable-reason" onclick="showReasonDetail(this, 'hardware')" title="Click for details">
+                                    <i class="fas fa-check-circle text-success"></i> Latest generation hardware
+                                </a>
+                                <a class="clickable-reason" onclick="showReasonDetail(this, 'security')" title="Click for details">
+                                    <i class="fas fa-check-circle text-success"></i> Enterprise-grade security features
+                                </a>
                                 {% if device.security %}
-                                <li><i class="fas fa-shield-alt text-success"></i> Security score: <strong>{{ device.security.score }}%</strong> ({{ device.security.level }})</li>
+                                <a class="clickable-reason" onclick="showReasonDetail(this, 'score')" title="Click for details">
+                                    <i class="fas fa-shield-alt text-success"></i> Security score: <strong>{{ device.security.score }}%</strong> ({{ device.security.level }})
+                                </a>
                                 {% endif %}
-                                <li><i class="fas fa-check-circle text-success"></i> Compatible with modern business software</li>
+                                <a class="clickable-reason" onclick="showReasonDetail(this, 'compatible')" title="Click for details">
+                                    <i class="fas fa-check-circle text-success"></i> Compatible with modern business software
+                                </a>
                                 {% if 'Windows' in device.name or 'Surface' in device.name %}
-                                <li><i class="fas fa-check-circle text-success"></i> Pre-installed Windows 11 Pro</li>
+                                <a class="clickable-reason" onclick="showReasonDetail(this, 'windows')" title="Click for details">
+                                    <i class="fas fa-check-circle text-success"></i> Pre-installed Windows 11 Pro
+                                </a>
                                 {% elif 'Mac' in device.name or 'Apple' in device.name %}
-                                <li><i class="fas fa-check-circle text-success"></i> macOS with built-in security</li>
+                                <a class="clickable-reason" onclick="showReasonDetail(this, 'macos')" title="Click for details">
+                                    <i class="fas fa-check-circle text-success"></i> macOS with built-in security
+                                </a>
                                 {% endif %}
-                            </ul>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -239,7 +378,11 @@
                                 <div class="col-md-3"><strong>Storage Index:</strong> {{ device.benchmark.storage_index }}/100</div>
                             </div>
                             {% else %}
-                            <p class="text-muted mb-0">Benchmark data unavailable for this device.</p>
+                            <p class="text-muted mb-2">Benchmark data is currently unavailable for this device.</p>
+                            <p class="small mb-0">
+                                External benchmark references:
+                                <a href="https://browser.geekbench.com/search?q={{ (device.name or '') | urlencode }}" target="_blank" rel="noopener">Geekbench search for {{ device.name }}</a>
+                            </p>
                             {% endif %}
                         </div>
                     </div>
@@ -865,5 +1008,127 @@ Generated by Device Provisioning Toolkit
             document.body.removeChild(element);
         }
     </script>
-</body>
+<!-- Modal for Reason Details -->
+        <div class="modal-overlay" id="reasonModalOverlay" onclick="if(event.target === this) closeReasonModal()">
+            <div class="modal-content" id="reasonModal"></div>
+        </div>
+
+        <script>
+            function fmt(n) {
+                const v = Number(n);
+                return Number.isFinite(v) ? v : 0;
+            }
+
+            function badgeFromScore(score) {
+                if (score >= 90) return 'Excellent';
+                if (score >= 75) return 'Good';
+                if (score >= 60) return 'Moderate';
+                return 'Basic';
+            }
+
+            function buildReasonBreakdown(reasonKey, d) {
+                const cpuTier = d.cpu >= 4.0 ? 'high-performance' : (d.cpu >= 3.0 ? 'balanced-performance' : 'entry-level');
+                const ramTier = d.ram >= 16 ? 'professional multitasking' : (d.ram >= 8 ? 'standard multitasking' : 'basic multitasking');
+                const storageTier = d.storage >= 512 ? 'ample capacity' : 'standard capacity';
+                const overallLevel = badgeFromScore(d.overallIndex || d.securityScore);
+
+                const map = {
+                    multitasking: [
+                        `<strong>RAM evidence:</strong> ${d.ram}GB RAM qualifies as ${ramTier}.`,
+                        `<strong>Memory index:</strong> ${d.memoryIndex}/100 from your benchmark model.`,
+                        `<strong>Practical proof:</strong> ${d.ram >= 16 ? 'Supports heavy parallel workloads (dev tools + browser + calls).' : 'Supports everyday concurrent workloads (office apps + browser + meetings).'} `,
+                    ],
+                    performance: [
+                        `<strong>CPU evidence:</strong> ${d.cpu.toFixed(1)} GHz (${cpuTier}).`,
+                        `<strong>CPU index:</strong> ${d.cpuIndex}/100 based on normalized scoring.`,
+                        `<strong>Practical proof:</strong> ${d.cpu >= 4.0 ? 'Strong for compile/render/analysis tasks.' : 'Well-suited for standard productivity and business workloads.'}`,
+                    ],
+                    storage: [
+                        `<strong>Storage evidence:</strong> ${d.storage}GB SSD (${storageTier}).`,
+                        `<strong>Storage index:</strong> ${d.storageIndex}/100 from normalized model.`,
+                        `<strong>Practical proof:</strong> ${d.storage >= 512 ? 'Enough for OS + enterprise apps + project files.' : 'Fits OS + common apps; external/cloud storage recommended for large media.'}`,
+                    ],
+                    hardware: [
+                        `<strong>Screen & form factor:</strong> ${d.screenSize}" display for ${d.screenSize >= 14 ? 'desk-focused productivity' : 'portable mobility'}.`,
+                        `<strong>Composite benchmark:</strong> ${d.overallIndex}/100 overall hardware index.`,
+                        `<strong>Proof:</strong> Overall index combines CPU, memory, storage, and security weights.`
+                    ],
+                    security: [
+                        `<strong>Security score:</strong> ${d.securityScore}% (${d.securityLevel || overallLevel}).`,
+                        `<strong>OS context:</strong> ${d.os || 'OS not specified'} security baseline applied in rule engine.`,
+                        `<strong>Proof:</strong> Security score is incorporated into total benchmark weighting for final ranking.`
+                    ],
+                    score: [
+                        `<strong>Verified score:</strong> ${d.securityScore}% (${d.securityLevel || overallLevel}).`,
+                        `<strong>Benchmark blend:</strong> Overall ${d.overallIndex}/100 includes 25% security weighting.`,
+                        `<strong>Proven validity:</strong> Score derives from deterministic policy/risk rules and hardware profile.`
+                    ],
+                    compatible: [
+                        `<strong>Platform evidence:</strong> ${d.os || 'Detected OS'} with modern hardware profile (${d.cpu.toFixed(1)} GHz, ${d.ram}GB RAM).`,
+                        `<strong>Capability proof:</strong> ${d.ram >= 16 ? 'Meets typical enterprise multitasking baseline.' : 'Meets standard productivity baseline.'}`,
+                        `<strong>Operational proof:</strong> Device is included in filtered, policy-scored recommendation pipeline.`
+                    ],
+                    windows: [
+                        `<strong>Windows posture:</strong> Enterprise-compatible security controls and management tooling available.`,
+                        `<strong>Proof:</strong> Security score ${d.securityScore}% and overall index ${d.overallIndex}/100 support business readiness.`,
+                        `<strong>Validation path:</strong> You can cross-check performance externally via Geekbench results for this model.`
+                    ],
+                    macos: [
+                        `<strong>macOS posture:</strong> Native platform hardening and update model with strong default security.`,
+                        `<strong>Proof:</strong> Security score ${d.securityScore}% and benchmark ${d.overallIndex}/100 indicate production suitability.`,
+                        `<strong>Validation path:</strong> External benchmark verification available via Geekbench for this model.`
+                    ]
+                };
+
+                return map[reasonKey] || ['<strong>No details available.</strong>'];
+            }
+
+            function showReasonDetail(element, reasonKey) {
+                const container = element.closest('.why-device-reasons');
+                if (!container) return;
+
+                const d = {
+                    name: container.getAttribute('data-device-name') || 'Unknown Device',
+                    cpu: fmt(container.getAttribute('data-cpu')),
+                    ram: fmt(container.getAttribute('data-ram')),
+                    storage: fmt(container.getAttribute('data-storage')),
+                    screenSize: fmt(container.getAttribute('data-screen-size')),
+                    os: container.getAttribute('data-os') || 'Unknown OS',
+                    securityScore: fmt(container.getAttribute('data-security-score')),
+                    securityLevel: container.getAttribute('data-security-level') || '',
+                    cpuIndex: fmt(container.getAttribute('data-cpu-index')),
+                    memoryIndex: fmt(container.getAttribute('data-memory-index')),
+                    storageIndex: fmt(container.getAttribute('data-storage-index')),
+                    overallIndex: fmt(container.getAttribute('data-overall-index')),
+                };
+
+                const items = buildReasonBreakdown(reasonKey, d)
+                    .map((item) => `<div class="breakdown-item">${item}</div>`)
+                    .join('');
+
+                const title = reasonKey.charAt(0).toUpperCase() + reasonKey.slice(1);
+                const modalHTML = `
+                    <button class="modal-close" onclick="closeReasonModal()">&times;</button>
+                    <div class="modal-header"><i class="fas fa-info-circle"></i> ${title} - Proven Breakdown</div>
+                    <div class="modal-device">${d.name}</div>
+                    ${items}
+                `;
+
+                const modal = document.getElementById('reasonModal');
+                const overlay = document.getElementById('reasonModalOverlay');
+                if (!modal || !overlay) return;
+                modal.innerHTML = modalHTML;
+                overlay.classList.add('active');
+            }
+
+            function closeReasonModal() {
+                const overlay = document.getElementById('reasonModalOverlay');
+                if (overlay) overlay.classList.remove('active');
+            }
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') closeReasonModal();
+            });
+        </script>
+    </body>
 </html>

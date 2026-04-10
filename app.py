@@ -634,10 +634,12 @@ def device(device_id):
     device.update({
         'os': enriched.get('os'),
         'cpu_vendor': enriched.get('cpu_vendor'),
-        'security': enriched.get('security')
+        'security': enriched.get('security'),
+        'benchmark': enriched.get('benchmark'),
+        'debloat_tools': enriched.get('debloat_tools')
     })
     # Add retailer links
-    device['retailer_links'] = get_retailer_links(device['name'], device['category'])
+    device['retailer_links'] = enriched.get('retailer_links') or get_retailer_links(device['name'], device['category'])
         
     print(f"Device details for ID {device_id}: {device}")
     

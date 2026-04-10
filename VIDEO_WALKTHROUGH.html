@@ -81,6 +81,35 @@
             border-radius: 10px;
             margin-bottom: 15px;
             border: 2px solid var(--primary);
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+
+        .device-image {
+            width: 200px;
+            height: 200px;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 2px solid var(--primary);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .device-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media (max-width: 768px) {
+            .device-card {
+                grid-template-columns: 1fr;
+            }
+
+            .device-image {
+                width: 100%;
+                max-width: 300px;
+            }
         }
 
         .badge-group {
@@ -246,6 +275,123 @@
             margin: 15px 0;
             font-size: 0.9rem;
         }
+
+        .clickable-reason {
+            background: linear-gradient(135deg, #e8f4f8, #f0f9ff);
+            padding: 12px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid var(--primary);
+            margin: 8px 0;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 500;
+        }
+
+        .clickable-reason:hover {
+            background: linear-gradient(135deg, #d0e8f2, #dff4ff);
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(91, 111, 199, 0.2);
+        }
+
+        .clickable-reason::before {
+            content: "▶";
+            color: var(--secondary);
+            font-size: 0.8rem;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-close {
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            color: #aaa;
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-close:hover {
+            color: #000;
+        }
+
+        .modal-header {
+            color: var(--primary);
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-device {
+            background: linear-gradient(135deg, var(--primary), #7B8FE9);
+            color: white;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-weight: 600;
+        }
+
+        .breakdown-item {
+            background: #f8f9fa;
+            padding: 12px 15px;
+            border-radius: 8px;
+            border-left: 4px solid var(--secondary);
+            margin: 10px 0;
+        }
+
+        .breakdown-item strong {
+            color: var(--primary);
+        }
     </style>
 </head>
 <body>
@@ -325,51 +471,60 @@
             <p>Featured curated devices with benchmarks, security scores, and multi-vendor purchase options</p>
             
             <div class="device-card">
-                <h3>Apple MacBook Air M2</h3>
-                <div class="icon-text">
-                    <i class="fas fa-layer-group"></i>
-                    <span><strong>Laptops</strong> • 🔒 Good • 74%</span>
-                </div>
-                <p><strong>Specs:</strong> 3.2 GHz • 8GB • 256GB • 13.6" screen</p>
-                <p><strong>Benchmark:</strong> 46/100 (CPU 64, RAM 12, Storage 13)</p>
-                <p style="font-size: 1.5rem; color: var(--danger); font-weight: bold;">£1149.0</p>
-                <div class="button-group">
-                    <button class="btn-amazon">🌐 Amazon</button>
-                    <button class="btn-currys">🛍️ Currys</button>
-                    <button class="btn-johnlewis">🏪 JohnLewis</button>
-                    <button class="btn-apple">🍎 Apple</button>
-                </div>
-            </div>
-
-            <div class="device-card">
-                <h3>Dell XPS 13 Plus</h3>
-                <div class="icon-text">
-                    <i class="fas fa-layer-group"></i>
-                    <span><strong>Laptops</strong> • 🔒 Excellent • 92%</span>
-                </div>
-                <p><strong>Specs:</strong> 4.7 GHz • 16GB • 512GB • 13.4" screen</p>
-                <p><strong>Benchmark:</strong> 66/100 (CPU 94, RAM 25, Storage 26)</p>
-                <p style="font-size: 1.5rem; color: var(--danger); font-weight: bold;">£1299.0</p>
-                <div class="button-group">
-                    <button class="btn-amazon">🌐 Amazon</button>
-                    <button class="btn-currys">🛍️ Currys</button>
-                    <button class="btn-johnlewis">🏪 JohnLewis</button>
+                <img src="/static/images/4.jpg" alt="Apple MacBook Air M2" class="device-image">
+                <div class="device-content">
+                    <h3>Apple MacBook Air M2</h3>
+                    <div class="icon-text">
+                        <i class="fas fa-layer-group"></i>
+                        <span><strong>Laptops</strong> • 🔒 Good • 74%</span>
+                    </div>
+                    <p><strong>Specs:</strong> 3.2 GHz • 8GB • 256GB • 13.6" screen</p>
+                    <p><strong>Benchmark:</strong> 46/100 (CPU 64, RAM 12, Storage 13)</p>
+                    <p style="font-size: 1.5rem; color: var(--danger); font-weight: bold;">£1149.0</p>
+                    <div class="button-group">
+                        <button class="btn-amazon">🌐 Amazon</button>
+                        <button class="btn-currys">🛍️ Currys</button>
+                        <button class="btn-johnlewis">🏪 JohnLewis</button>
+                        <button class="btn-apple">🍎 Apple</button>
+                    </div>
                 </div>
             </div>
 
             <div class="device-card">
-                <h3>Lenovo ThinkPad X1 Carbon Gen 11</h3>
-                <div class="icon-text">
-                    <i class="fas fa-layer-group"></i>
-                    <span><strong>Laptops</strong> • 🔒 Excellent • 94%</span>
+                <img src="/static/images/5.jpg" alt="Dell XPS 13 Plus" class="device-image">
+                <div class="device-content">
+                    <h3>Dell XPS 13 Plus</h3>
+                    <div class="icon-text">
+                        <i class="fas fa-layer-group"></i>
+                        <span><strong>Laptops</strong> • 🔒 Excellent • 92%</span>
+                    </div>
+                    <p><strong>Specs:</strong> 4.7 GHz • 16GB • 512GB • 13.4" screen</p>
+                    <p><strong>Benchmark:</strong> 66/100 (CPU 94, RAM 25, Storage 26)</p>
+                    <p style="font-size: 1.5rem; color: var(--danger); font-weight: bold;">£1299.0</p>
+                    <div class="button-group">
+                        <button class="btn-amazon">🌐 Amazon</button>
+                        <button class="btn-currys">🛍️ Currys</button>
+                        <button class="btn-johnlewis">🏪 JohnLewis</button>
+                    </div>
                 </div>
-                <p><strong>Specs:</strong> 4.9 GHz • 16GB • 512GB • 14.0" screen</p>
-                <p><strong>Benchmark:</strong> 68/100 (CPU 96, RAM 25, Storage 26)</p>
-                <p style="font-size: 1.5rem; color: var(--danger); font-weight: bold;">£1599.0</p>
-                <div class="button-group">
-                    <button class="btn-amazon">🌐 Amazon</button>
-                    <button class="btn-currys">🛍️ Currys</button>
-                    <button class="btn-johnlewis">🏪 JohnLewis</button>
+            </div>
+
+            <div class="device-card">
+                <img src="/static/images/7.jpg" alt="Lenovo ThinkPad X1 Carbon Gen 11" class="device-image">
+                <div class="device-content">
+                    <h3>Lenovo ThinkPad X1 Carbon Gen 11</h3>
+                    <div class="icon-text">
+                        <i class="fas fa-layer-group"></i>
+                        <span><strong>Laptops</strong> • 🔒 Excellent • 94%</span>
+                    </div>
+                    <p><strong>Specs:</strong> 4.9 GHz • 16GB • 512GB • 14.0" screen</p>
+                    <p><strong>Benchmark:</strong> 68/100 (CPU 96, RAM 25, Storage 26)</p>
+                    <p style="font-size: 1.5rem; color: var(--danger); font-weight: bold;">£1599.0</p>
+                    <div class="button-group">
+                        <button class="btn-amazon">🌐 Amazon</button>
+                        <button class="btn-currys">🛍️ Currys</button>
+                        <button class="btn-johnlewis">🏪 JohnLewis</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -459,16 +614,30 @@
                 <li><strong>Display:</strong> 13.4" Screen • Badge: "Standard"</li>
             </ul>
 
-            <h3>Why This Device?</h3>
-            <ul class="feature-list">
-                <li>Excellent multitasking with 16GB+ RAM</li>
-                <li>High-performance processor for demanding tasks</li>
-                <li>Ample storage with fast SSD technology</li>
-                <li>Latest generation hardware</li>
-                <li>Enterprise-grade security features</li>
-                <li>Security score: 92% (Excellent)</li>
-                <li>Compatible with modern business software</li>
-            </ul>
+            <h3>Why This Device? <span style="font-size: 0.8rem; color: #666;">(Click any reason for details)</span></h3>
+            <div class="why-device-reasons" data-device="dell-xps">
+                <div class="clickable-reason" onclick="showReasonDetail(this, 'multitasking')" title="Click for details">
+                    Excellent multitasking with 16GB+ RAM
+                </div>
+                <div class="clickable-reason" onclick="showReasonDetail(this, 'performance')" title="Click for details">
+                    High-performance processor for demanding tasks
+                </div>
+                <div class="clickable-reason" onclick="showReasonDetail(this, 'storage')" title="Click for details">
+                    Ample storage with fast SSD technology
+                </div>
+                <div class="clickable-reason" onclick="showReasonDetail(this, 'hardware')" title="Click for details">
+                    Latest generation hardware
+                </div>
+                <div class="clickable-reason" onclick="showReasonDetail(this, 'security')" title="Click for details">
+                    Enterprise-grade security features
+                </div>
+                <div class="clickable-reason" onclick="showReasonDetail(this, 'score')" title="Click for details">
+                    Security score: 92% (Excellent)
+                </div>
+                <div class="clickable-reason" onclick="showReasonDetail(this, 'compatible')" title="Click for details">
+                    Compatible with modern business software
+                </div>
+            </div>
 
             <h3>Hardware Benchmark Summary</h3>
             <div class="highlight">
@@ -772,6 +941,11 @@ gunicorn -w 4 -b 0.0.0.0:5000 app:app
         </div>
     </div>
 
+    <!-- Modal for Reason Details -->
+    <div class="modal-overlay" id="reasonModalOverlay">
+        <div class="modal-content" id="reasonModal"></div>
+    </div>
+
     <script>
         let currentSlide = 1;
         const totalSlides = document.querySelectorAll('.slide').length;
@@ -802,6 +976,323 @@ gunicorn -w 4 -b 0.0.0.0:5000 app:app
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft') changeSlide(-1);
             if (e.key === 'ArrowRight') changeSlide(1);
+        });
+
+        // Device-specific reason breakdowns
+        const reasonDetails = {
+            'multitasking': {
+                'dell-xps': {
+                    title: 'Multitasking Performance',
+                    device: 'Dell XPS 13 Plus',
+                    breakdown: [
+                        '<strong>RAM Capacity:</strong> 16GB - Professional-grade multitasking with 15+ browser tabs, multiple applications running simultaneously',
+                        '<strong>Intel Core Ultra:</strong> 12+ cores allow true parallel processing of demanding workloads',
+                        '<strong>Memory Speed:</strong> DDR5 technology provides 40% faster memory access than DDR4, reducing app loading time',
+                        '<strong>Practical Usage:</strong> Video conferencing + video editing + browser = seamless performance, no noticeable lag',
+                        '<strong>Benchmark:</strong> Memory Index: 25/100 (16GB normalized to 64GB max scale)',
+                        '<strong>Recommended For:</strong> Content creators, software developers, power users'
+                    ]
+                },
+                'macbook-air': {
+                    title: 'Multitasking Performance',
+                    device: 'Apple MacBook Air M2',
+                    breakdown: [
+                        '<strong>RAM Capacity:</strong> 8GB - Sufficient for light productivity tasks like browsing, email, and document editing',
+                        '<strong>M2 Chip Architecture:</strong> 8-core design efficiently handles multiple applications without significant slowdown',
+                        '<strong>Unified Memory:</strong> macOS efficiently manages shared memory space for faster app switching',
+                        '<strong>Practical Usage:</strong> Google Chrome + Slack + Office = smooth performance, but video editing may show lag',
+                        '<strong>Benchmark:</strong> Memory Index: 12/100 (8GB normalized to 64GB max scale)',
+                        '<strong>Recommended For:</strong> Students, writers, general office work'
+                    ]
+                },
+                'lenovo-thinkpad': {
+                    title: 'Multitasking Performance',
+                    device: 'Lenovo ThinkPad X1 Carbon Gen 11',
+                    breakdown: [
+                        '<strong>RAM Capacity:</strong> 16GB - Enterprise-class multitasking designed for business deployments with many concurrent applications',
+                        '<strong>Intel vPro Processor:</strong> Security co-processor allows background security scanning without impacting performance',
+                        '<strong>MDM Ready:</strong> Memory architecture optimized for enterprise management tools running in background',
+                        '<strong>Practical Usage:</strong> Zoom + VPN + Business Apps + Background Antivirus = rock-solid performance, optimized for corporate environments',
+                        '<strong>Benchmark:</strong> Memory Index: 25/100 (16GB normalized to 64GB max scale)',
+                        '<strong>Recommended For:</strong> Enterprise users, IT professionals, business deployments'
+                    ]
+                }
+            },
+            'performance': {
+                'dell-xps': {
+                    title: 'Processor Performance',
+                    device: 'Dell XPS 13 Plus',
+                    breakdown: [
+                        '<strong>CPU Speed:</strong> 4.7 GHz - Higher clock speeds enable rapid task completion and interactive responsiveness',
+                        '<strong>Intel Core Ultra:</strong> 12+ cores with P-cores and E-cores optimized for both single-threaded and multi-threaded workloads',
+                        '<strong>Real-World Performance:</strong> Video editing, code compilation, 3D rendering = noticeably faster than competing ultrabooks',
+                        '<strong>Thermal Management:</strong> Advanced cooling allows sustained high performance during longer workloads',
+                        '<strong>Benchmark:</strong> CPU Index: 94/100 (4.7 GHz normalized to 5.0 GHz max scale)',
+                        '<strong>Sweet Spot:</strong> Perfect for creative professionals who need responsiveness without bulk'
+                    ]
+                },
+                'macbook-air': {
+                    title: 'Processor Performance',
+                    device: 'Apple MacBook Air M2',
+                    breakdown: [
+                        '<strong>CPU Speed:</strong> 3.2 GHz base - Conservative but efficient clock speed on ARM architecture',
+                        '<strong>M2 Capabilities:</strong> 8 cores with dynamic frequency scaling; excels at single-threaded workloads typical for macOS apps',
+                        '<strong>Real-World Performance:</strong> Document processing, spreadsheets, photo editing = responsive and snappy',
+                        '<strong>Thermal Efficiency:</strong> No fan noise during typical usage, fanless design in MacBook Air M2',
+                        '<strong>Benchmark:</strong> CPU Index: 64/100 (3.2 GHz normalized to 5.0 GHz max scale)',
+                        '<strong>Limitation:</strong> Demanding tasks like 4K video rendering will show progress, not real-time interactive performance'
+                    ]
+                },
+                'lenovo-thinkpad': {
+                    title: 'Processor Performance',
+                    device: 'Lenovo ThinkPad X1 Carbon Gen 11',
+                    breakdown: [
+                        '<strong>CPU Speed:</strong> 4.9 GHz - Top-tier clock speed for immediate task responsiveness',
+                        '<strong>Intel vPro with Core Ultra:</strong> 12+ cores optimized for enterprise workloads like encryption, VPN, and business applications',
+                        '<strong>Real-World Performance:</strong> Large Excel analysis, video conferencing encoding, enterprise software = no perception of lag',
+                        '<strong>Security Co-Processor:</strong> Dedicated hardware for Intel Trusted Execution Environment doesn\'t impact performance',
+                        '<strong>Benchmark:</strong> CPU Index: 96/100 (4.9 GHz normalized to 5.0 GHz max scale)',
+                        '<strong>Enterprise Ready:</strong> Designed for 8-10 hour workdays handling business-critical tasks reliably'
+                    ]
+                }
+            },
+            'storage': {
+                'dell-xps': {
+                    title: 'Storage Capacity & Speed',
+                    device: 'Dell XPS 13 Plus',
+                    breakdown: [
+                        '<strong>Storage Size:</strong> 512GB - Professional capacity for applications, projects, media, and working files',
+                        '<strong>SSD Technology:</strong> Samsung PM9B1b or equivalent NVMe Gen 4 SSD delivers 4,000+ MB/s read speed',
+                        '<strong>Real-World Usage:</strong> OS (50GB) + Adobe Creative Suite (100GB) + 4K footage (250GB) + Projects (100GB) = well-managed',
+                        '<strong>Speed Advantage:</strong> 512GB SSDs cache at higher performance levels, full sustained writes at peak speed',
+                        '<strong>Benchmark:</strong> Storage Index: 26/100 (512GB normalized to 2TB max scale)',
+                        '<strong>Recommended:</strong> Creative professionals, content creators, developers with large codebases'
+                    ]
+                },
+                'macbook-air': {
+                    title: 'Storage Capacity & Speed',
+                    device: 'Apple MacBook Air M2',
+                    breakdown: [
+                        '<strong>Storage Size:</strong> 256GB - Suitable for personal use, documents, photos, and lightweight applications',
+                        '<strong>SSD Technology:</strong> Apple proprietary NVMe SSD provides near-instant app launches and file operations (reads: 3,000+ MB/s)',
+                        '<strong>Real-World Usage:</strong> Operating system (50GB) + Applications (100GB) + Personal files (100GB) = comfortable within limits',
+                        '<strong>Limitation:</strong> Video editing projects (requires 50-200GB temporary space) will need external storage',
+                        '<strong>Benchmark:</strong> Storage Index: 13/100 (256GB normalized to 2TB max scale)',
+                        '<strong>Mitigation:</strong> Affordable iCloud or cloud storage can off-load infrequently-accessed files'
+                    ]
+                },
+                'lenovo-thinkpad': {
+                    title: 'Storage Capacity & Speed',
+                    device: 'Lenovo ThinkPad X1 Carbon Gen 11',
+                    breakdown: [
+                        '<strong>Storage Size:</strong> 512GB - Enterprise-appropriate capacity for business applications, user data, and compliance archives',
+                        '<strong>SSD Technology:</strong> ThinkPad typically ships with enterprise-grade NVMe SSDs (Kioxia, Crucial) with 3,500+ MB/s read speed',
+                        '<strong>Real-World Usage:</strong> OS (50GB) + Business Apps (100GB) + Virtual Machine (50GB) + Documents/Archives (250GB) = typical deployment',
+                        '<strong>Data Protection:</strong> Self-encrypting drive (SED) capabilities for compliance with data protection regulations',
+                        '<strong>Benchmark:</strong> Storage Index: 26/100 (512GB normalized to 2TB max scale)',
+                        '<strong>Enterprise Ready:</strong> Sized for corporate policies typically allowing 80% allocation for user data'
+                    ]
+                }
+            },
+            'hardware': {
+                'dell-xps': {
+                    title: 'Generation & Hardware Features',
+                    device: 'Dell XPS 13 Plus',
+                    breakdown: [
+                        '<strong>Release:</strong> 2024 generation - Latest Intel Core Ultra processor, represents current desktop-tier performance in ultrabook form',
+                        '<strong>Build Quality:</strong> Border-to-border InfinityEdge display, machined aluminum chassis, premium construction',
+                        '<strong>Display:</strong> 13.4\" OLED Touch - 3K resolution (3840 x 2400), 500 nits peak brightness, 100% DCI-P3 color gamut',
+                        '<strong>Ports:</strong> 2x Thunderbolt 4 (40Gbps), 1x USB 3.1 for legacy compatibility',
+                        '<strong>Webcam:</strong> IR webcam with Windows Hello facial recognition and 1080p resolution',
+                        '<strong>Audio:</strong> Bang & Olufsen tuned dual speakers with Dolby Atmos spatial audio',
+                        '<strong>Battery:</strong> 6-cell 60Wh battery rated for 10-13 hours mixed use'
+                    ]
+                },
+                'macbook-air': {
+                    title: 'Generation & Hardware Features',
+                    device: 'Apple MacBook Air M2',
+                    breakdown: [
+                        '<strong>Release:</strong> 2023 generation - Current and well-supported by Apple ecosystem',
+                        '<strong>Build Quality:</strong> Aluminum unibody chassis, premium construction with proven thermal design',
+                        '<strong>Ports:</strong> 2x Thunderbolt 3 (USB-C) with 40Gbps speeds for external storage and displays',
+                        '<strong>Display:</strong> 13.6\" Liquid Retina - 500 nits brightness, P3 color accuracy, suitable for creative work',
+                        '<strong>Webcam:</strong> 1080p FaceTime HD camera with improved low-light performance',
+                        '<strong>Audio:</strong> Dual-speaker stereo sound with spatial audio support for video calls and media',
+                        '<strong>Battery:</strong> 52.6Wh battery rated for up to 15-17 hours of typical use'
+                    ]
+                },
+                'lenovo-thinkpad': {
+                    title: 'Generation & Hardware Features',
+                    device: 'Lenovo ThinkPad X1 Carbon Gen 11',
+                    breakdown: [
+                        '<strong>Release:</strong> 2024 generation - Enterprise-tested Intel Core Ultra vPro, proven in corporate deployments worldwide',
+                        '<strong>Build Quality:</strong> ThinkPad premium construction with MIL-SPEC durability testing, business-grade reliability',
+                        '<strong>Display:</strong> 14.0\" IPS LCD - FHD (1920x1200) standard, optional 2.8K OLED, suitable for business and creative work',
+                        '<strong>Ports:</strong> 2x Thunderbolt 4, 2x USB 3.2, HDMI 2.1, SD card reader, 3.5mm headphone jack',
+                        '<strong>Webcam:</strong> 1080p FHD with IR for Windows Hello and improved low-light clarity for video calls',
+                        '<strong>Audio:</strong> Dual speakers with Dolby Atmos, designed for clear voice conferencing',
+                        '<strong>Battery:</strong> 63Wh battery with RapidCharge, rated for 12-15 hours in typical business use'
+                    ]
+                }
+            },
+            'security': {
+                'dell-xps': {
+                    title: 'Security Features',
+                    device: 'Dell XPS 13 Plus',
+                    breakdown: [
+                        '<strong>CPU-Level:</strong> Intel Core Ultra with Intel Software Guard Extensions (SGX) and Trusted Execution Environment (TEE)',
+                        '<strong>Encryption:</strong> Hardware AES acceleration enables fast full-disk encryption (BitLocker) without performance penalty',
+                        '<strong>Biometric:</strong> Windows Hello IR webcam for facial recognition and optional fingerprint reader',
+                        '<strong>Firmware:</strong> Intel Boot Guard ensures firmware integrity, prevents rootkit installation at boot time',
+                        '<strong>TPM:</strong> Discrete TPM 2.0 chip stores encryption keys and security policies securely',
+                        '<strong>BIOS:</strong> Dell-customized BIOS with secure boot chain verification and UEFI security features',
+                        '<strong>Ports:</strong> Selectable USB-C port charging to prevent data exfiltration through power connectors',
+                        '<strong>Threat Detection:</strong> Supports Windows Defender Advanced Threat Protection and MDM enrollment'
+                    ]
+                },
+                'macbook-air': {
+                    title: 'Security Features',
+                    device: 'Apple MacBook Air M2',
+                    breakdown: [
+                        '<strong>CPU-Level:</strong> Apple T2 security chip with Secure Enclave coprocessor for cryptographic operations',
+                        '<strong>Encryption:</strong> Full Disk Encryption via FileVault 2 (military-grade AES-256)',
+                        '<strong>Biometric:</strong> Touch ID fingerprint authentication for login and application authorization',
+                        '<strong>Firmware:</strong> Secure Boot validates integrity of system firmware before OS loads',
+                        '<strong>Memory:</strong> Pointer authentication code (PAC) prevents memory corruption exploits',
+                        '<strong>OS Level:</strong> macOS Sonoma includes XProtect (real-time malware scanning) and Gatekeeper (code signing verification)',
+                        '<strong>Network:</strong> iCloud Keychain for encrypted password management across devices',
+                        '<strong>MDM Ready:</strong> Profiles framework supports enterprise Mobile Device Management'
+                    ]
+                },
+                'lenovo-thinkpad': {
+                    title: 'Security Features',
+                    device: 'Lenovo ThinkPad X1 Carbon Gen 11',
+                    breakdown: [
+                        '<strong>CPU-Level:</strong> Intel Core Ultra vPro with dedicated Security Capabilities for threat detection at hardware level',
+                        '<strong>Encryption:</strong> Intel TXT (Trusted Execution Technology) with AES crypto acceleration for strong encryption',
+                        '<strong>Biometric:</strong> Integrated IR camera for Windows Hello facial recognition, optional fingerprint reader module',
+                        '<strong>Smartcard:</strong> Integrated FIPS 140-2 smartcard reader for CAC/PIV card authentication in government environments',
+                        '<strong>Firmware:</strong> ThinkShield with Secure Wipe, Trusted Build (secure firmware chain from factory)',
+                        '<strong>TPM:</strong> Discrete TPM 2.0 chip with FIPS 140-2 Level 2 certification',
+                        '<strong>Docking:</strong> ThinkPad Docking Connector with Thunderbolt dock option supports DisplayPort over security link',
+                        '<strong>MDM/Enterprise:</strong> BIOS supports Intel vPro Remote Management, LVFS firmware updates, and enterprise policy enforcement'
+                    ]
+                }
+            },
+            'score': {
+                'dell-xps': {
+                    title: 'Security Score Breakdown',
+                    device: 'Dell XPS 13 Plus',
+                    breakdown: [
+                        '<strong>Overall Score:</strong> 92% (Excellent) - Professional-grade device suitable for sensitive business work',
+                        '<strong>Hardware Security:</strong> 95% - Intel vPro, discrete TPM 2.0, and multiple security co-processors',
+                        '<strong>OS Security Baseline:</strong> 90% - Windows 11 Enterprise features (when deployed) include Advanced Threat Protection',
+                        '<strong>CPU Vendor Score:</strong> 92% - Intel security record and SGX support align with enterprise requirements',
+                        '<strong>Use Case Adjustment:</strong> +2% for business use (higher security standards applied)',
+                        '<strong>Recommendation:</strong> Deploy with Windows 11 Pro or Enterprise, add MDM enrollment for maximum security benefit'
+                    ]
+                },
+                'macbook-air': {
+                    title: 'Security Score Breakdown',
+                    device: 'Apple MacBook Air M2',
+                    breakdown: [
+                        '<strong>Overall Score:</strong> 74% (Good) - Suitable for personal and small business use with standard security practices',
+                        '<strong>Hardware Security:</strong> 80% - T2 chip and Secure Enclave provide industry-leading hardware security',
+                        '<strong>OS Security Baseline:</strong> 75% - macOS has lower malware targeting but fewer tools compared to Windows enterprise',
+                        '<strong>CPU Vendor Score:</strong> 70% - Apple ARM-based design differs from x86, supporting different threat models',
+                        '<strong>Use Case Adjustment:</strong> +5% for personal use (fewer enterprise-grade requirements)',
+                        '<strong>Recommendation:</strong> Add enterprise device management tools like Jamf for business deployments to reach 85%+ score'
+                    ]
+                },
+                'lenovo-thinkpad': {
+                    title: 'Security Score Breakdown',
+                    device: 'Lenovo ThinkPad X1 Carbon Gen 11',
+                    breakdown: [
+                        '<strong>Overall Score:</strong> 94% (Excellent) - Enterprise-grade security designed for government and corporate deployments',
+                        '<strong>Hardware Security:</strong> 96% - ThinkPad vPro platform, discrete TPM, smartcard reader, and comprehensive security co-processors',
+                        '<strong>OS Security Baseline:</strong> 93% - Optimized for Windows 11 Enterprise with Group Policy and advanced threat protection',
+                        '<strong>CPU Vendor Score:</strong> 94% - Intel vPro specifically designed for enterprise security and remote management',
+                        '<strong>Use Case Adjustment:</strong> +3% for government/enterprise use (meets Federal standards)',
+                        '<strong>Certification:</strong> Available with Common Criteria EAL4+ certification for government procurement programs'
+                    ]
+                }
+            },
+            'compatible': {
+                'dell-xps': {
+                    title: 'Software Compatibility',
+                    device: 'Dell XPS 13 Plus',
+                    breakdown: [
+                        '<strong>Windows 11 Compatibility:</strong> Full support for Windows 11 Pro and Enterprise, all latest features enabled',
+                        '<strong>Business Applications:</strong> SAP, Oracle, Salesforce, Microsoft 365 all optimized for Core Ultra processors',
+                        '<strong>Creative Software:</strong> Adobe CC, Autodesk suite, DaVinci Resolve fully support native Intel UX implementation',
+                        '<strong>VPN & Security:</strong> Cisco AnyConnect, Palo Alto Networks, CrowdStrike all have certified Windows 11 drivers',
+                        '<strong>Virtual Machines:</strong> VMware Workstation Pro and Hyper-V run Windows, Linux, and specialty OS seamlessly on 12-core CPU',
+                        '<strong>Legacy Apps:</strong> 99% of Windows software runs on Windows 11 without modification; WSRC for backward compatibility',
+                        '<strong>Tested With:</strong> Windows 11 Pro/Enterprise, Linux Ubuntu 23.04+, all major containerization platforms confirmed'
+                    ]
+                },
+                'macbook-air': {
+                    title: 'Software Compatibility',
+                    device: 'Apple MacBook Air M2',
+                    breakdown: [
+                        '<strong>Native macOS Apps:</strong> Microsoft Office, Adobe Creative Cloud, Slack, Zoom all have native ARM64 builds optimized for M2',
+                        '<strong>Web Applications:</strong> Chrome, Firefox, Safari fully support modern web apps and Progressive Web Apps (PWAs)',
+                        '<strong>Development Tools:</strong> Xcode, PyCharm, VSCode all have native M2 support for developer productivity',
+                        '<strong>Legacy x86 Apps:</strong> Rosetta 2 emulation layer runs older Intel Mac software with ~85% native performance',
+                        '<strong>VPN & Security Tools:</strong> CrowdStrike, Jamf, and major MDM platforms have native macOS ARM64 agents',
+                        '<strong>Limitation:</strong> Some niche enterprise software may not yet have M2 builds; check compatibility before deployment',
+                        '<strong>Tested With:</strong> macOS Sonoma and later, all major business suites confirmed compatible'
+                    ]
+                },
+                'lenovo-thinkpad': {
+                    title: 'Software Compatibility',
+                    device: 'Lenovo ThinkPad X1 Carbon Gen 11',
+                    breakdown: [
+                        '<strong>Windows 11 Enterprise:</strong> Fully optimized for Windows 11 Enterprise with Intel vPro feature set unlocked',
+                        '<strong>Corporate Software:</strong> SAP, Oracle, Salesforce tested and certified by enterprises on ThinkPad platform',
+                        '<strong>MDM/MAM:</strong> Microsoft Intune, IBM BigFix, ESET all function with full feature set on vPro-enabled ThinkPad',
+                        '<strong>Government-Specific:</strong> NIE (Network Information Exchange), DISA STIGs, and FedRAMP tools all pre-validated on ThinkPad',
+                        '<strong>Virtual Machines:</strong> VMware vSphere, Hyper-V, and KVM all support nested virtualization on 12-core vPro platform',
+                        '<strong>Legacy Applications:</strong> AppV for application virtualization and WSRC for Win32 legacy software compatibility',
+                        '<strong>Tested/Certified:</strong> Windows 11 Enterprise, CAC/PIV card readers, Citrix/RDP remote desktop sessions all production-ready'
+                    ]
+                }
+            }
+        };
+
+        function showReasonDetail(element, reasonKey) {
+            const container = element.closest('.why-device-reasons');
+            const deviceKey = container.dataset.device;
+            const allDevices = Object.keys(reasonDetails[reasonKey] || {});
+            const currentDevice = allDevices[0] || deviceKey;
+            const details = reasonDetails[reasonKey];
+            
+            if (!details || !details[currentDevice]) return;
+            
+            const deviceDetails = details[currentDevice];
+            
+            let modalHTML = `
+                <button class="modal-close" onclick="closeReasonModal()\">&times;</button>
+                <div class="modal-header">
+                    <i class="fas fa-info-circle\"></i> ${deviceDetails.title}
+                </div>
+                <div class="modal-device\">${deviceDetails.device}</div>
+            `;
+            
+            deviceDetails.breakdown.forEach(item => {
+                modalHTML += `<div class="breakdown-item\">${item}</div>`;
+            });
+            
+            document.getElementById('reasonModal').innerHTML = modalHTML;
+            document.getElementById('reasonModalOverlay').classList.add('active');
+        }
+
+        function closeReasonModal() {
+            document.getElementById('reasonModalOverlay').classList.remove('active');
+        }
+
+        document.getElementById('reasonModalOverlay').addEventListener('click', (e) => {
+            if (e.target.id === 'reasonModalOverlay') closeReasonModal();
         });
 
         showSlide(currentSlide);

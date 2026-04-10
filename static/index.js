@@ -154,4 +154,98 @@ document.addEventListener('DOMContentLoaded', function() {
     if (themeToggle) {
         themeToggle.addEventListener('change', switchTheme);
     }
+
+    const morphNav = document.getElementById('scroll-morph-nav');
+    const hero = document.getElementById('hero');
+    const sectionTargets = Array.from(document.querySelectorAll('.expand-on-scroll'));
+    const navLinks = Array.from(document.querySelectorAll('.scroll-nav-link'));
+
+    function updateMorphNavVisibility() {
+        if (!morphNav || !hero) return;
+        const triggerY = hero.offsetTop + Math.max(120, hero.offsetHeight * 0.45);
+        const show = window.scrollY > triggerY;
+        morphNav.classList.toggle('visible', show);
+        document.body.classList.toggle('has-scroll-nav', show);
+    }
+
+    function resolveTarget(link) {
+        const targetId = link.getAttribute('data-target');
+        const fallbackId = link.getAttribute('data-fallback');
+        const target = targetId ? document.getElementById(targetId) : null;
+        if (target) return { id: targetId, el: target };
+        const fallback = fallbackId ? document.getElementById(fallbackId) : null;
+        if (fallback) return { id: fallbackId, el: fallback };
+        return { id: '', el: null };
+    }
+
+    function activateCurrentSection() {
+        if (!navLinks.length) return;
+        const midpoint = window.scrollY + window.innerHeight * 0.35;
+        let activeId = '';
+
+        sectionTargets.forEach((section) => {
+            if (!section.id) return;
+            const top = section.offsetTop;
+            const bottom = top + section.offsetHeight;
+            if (midpoint >= top && midpoint < bottom) {
+                activeId = section.id;
+            }
+        });
+
+        navLinks.forEach((link) => {
+            const resolved = resolveTarget(link);
+            link.classList.toggle('active', !!activeId && resolved.id === activeId);
+        });
+    }
+
+    navLinks.forEach((link) => {
+        link.addEventListener('click', (e) => {
+            const resolved = resolveTarget(link);
+            const target = resolved.el;
+            if (!target) return;
+            e.preventDefault();
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            const requestedTarget = link.getAttribute('data-target');
+            target.classList.remove('section-pulse');
+            // Force reflow so repeated clicks retrigger animation.
+            void target.offsetWidth;
+            target.classList.add('section-pulse');
+            setTimeout(() => target.classList.remove('section-pulse'), 900);
+
+            // If "Results" is unavailable, open search form as a useful fallback action.
+            if (requestedTarget === 'search-results' && resolved.id !== 'search-results') {
+                const form = document.getElementById('device-form');
+                if (form && form.style.display !== 'block' && typeof toggleForm === 'function') {
+                    toggleForm();
+                }
+            }
+        });
+    });
+
+    if ('IntersectionObserver' in window && sectionTargets.length) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-expanded');
+                } else {
+                    entry.target.classList.remove('is-expanded');
+                }
+            });
+        }, {
+            root: null,
+            threshold: 0.35,
+            rootMargin: '-8% 0px -12% 0px'
+        });
+
+        sectionTargets.forEach((section) => observer.observe(section));
+    }
+
+    window.addEventListener('scroll', () => {
+        updateMorphNavVisibility();
+        activateCurrentSection();
+    }, { passive: true });
+
+    updateMorphNavVisibility();
+    activateCurrentSection();
 });
