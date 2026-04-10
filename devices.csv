@@ -1,0 +1,35 @@
+name,category,cpu_speed,ram,storage,screen_size,price,source
+Apple MacBook Air M2,Laptops,3.2,8,256,13.6,1149,Apple
+Apple MacBook Pro 14" M3,Laptops,3.5,16,512,14.0,1899,Apple
+Apple MacBook Pro 16" M3 Max,Laptops,3.2,36,1000,16.0,3499,Apple
+Dell XPS 13 Plus,Laptops,4.7,16,512,13.4,1299,Dell
+Dell XPS 15,Laptops,4.9,16,1000,15.6,1999,Dell
+Dell Inspiron 14,Laptops,3.8,8,256,14.0,599,Dell
+Lenovo ThinkPad X1 Carbon Gen 11,Laptops,4.9,16,512,14.0,1599,Lenovo
+Lenovo ThinkPad E14,Laptops,3.6,16,512,14.0,899,Lenovo
+Lenovo Yoga 9i,Laptops,4.2,16,1000,14.0,1399,Lenovo
+HP Spectre x360 14,Laptops,4.7,16,1000,13.5,1399,HP
+HP Pavilion 15,Laptops,3.4,8,512,15.6,599,HP
+HP OMEN 15,Laptops,4.5,16,512,15.6,1299,HP
+Microsoft Surface Laptop 5,Laptops,4.7,8,256,13.5,999,Microsoft
+Microsoft Surface Laptop 6 (Snapdragon),Laptops,3.8,16,512,13.6,1199,Microsoft
+Microsoft Surface Book 3,Laptops,4.2,16,256,13.5,2599,Microsoft
+ASUS VivoBook 15,Laptops,3.6,16,512,15.6,749,ASUS
+ASUS ZenBook 14,Laptops,4.1,8,512,14.0,999,ASUS
+Apple iPad Pro 11" M4,Tablet,3.2,8,128,11.0,799,Apple
+Apple iPad Pro 12.9" M4,Tablet,3.2,8,256,12.9,1079,Apple
+Apple iPad Air 11" M2,Tablet,3.1,8,64,11.0,599,Apple
+Samsung Galaxy Tab S9+,Tablet,3.0,12,256,12.4,799,Samsung
+Samsung Galaxy Tab S10+,Tablet,3.2,12,256,14.6,999,Samsung
+Google Pixel Tablet,Tablet,2.85,8,128,10.95,599,Google
+Lenovo Tab M10+ Pro,Tablet,3.8,8,128,10.6,299,Lenovo
+Apple iMac 24" M3,PCs,3.2,8,256,24.0,1299,Apple
+Apple Mac mini M2,PCs,3.5,8,256,0,699,Apple
+Apple Mac Studio M2 Max,PCs,3.5,32,1000,0,1999,Apple
+Dell OptiPlex 7000 Tower,PCs,4.4,16,512,24.0,799,Dell
+Dell XPS Desktop 8960,PCs,4.4,32,1000,27.0,2299,Dell
+HP Elite Desk 800 Tower,PCs,4.2,16,512,22.0,1099,HP
+HP Pavilion TG01,PCs,3.5,16,512,21.5,799,HP
+Lenovo ThinkCentre M90,PCs,4.3,16,512,24.0,899,Lenovo
+ASUS ProArt Station D6,PCs,4.8,32,2000,31.5,3299,ASUS
+Acer Aspire TC,PCs,3.6,16,512,21.5,649,Acer

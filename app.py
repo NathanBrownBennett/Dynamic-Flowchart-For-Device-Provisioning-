@@ -4,6 +4,7 @@ import sqlite3
 import graphviz
 import random
 import threading
+import requests
 from device_scraper import DeviceDataScraper, FALLBACK_DEVICE_DATA
 import re
 import time
@@ -17,6 +18,41 @@ devices = []
 @app.route('/favicon.ico')
 def favicon():
     return send_file(os.path.join(app.root_path, 'static', 'favicon.svg'), mimetype='image/svg+xml')
+
+
+@app.route('/validate-links', methods=['POST'])
+def validate_links():
+    """Validate retailer links for a device (async helper)"""
+    try:
+        data = request.get_json()
+        device_name = data.get('device_name', '')
+        category = data.get('category', 'device')
+        
+        retailer_links = get_retailer_links(device_name, category)
+        
+        # Validate each link (quick check)
+        validation_results = {}
+        for retailer, url in retailer_links.items():
+            try:
+                response = requests.head(url, timeout=3, allow_redirects=True)
+                validation_results[retailer] = {
+                    'url': url,
+                    'valid': response.status_code < 400,
+                    'status': response.status_code
+                }
+            except Exception as e:
+                validation_results[retailer] = {
+                    'url': url,
+                    'valid': False,
+                    'error': str(e)
+                }
+        
+        return jsonify({
+            'device': device_name,
+            'links': validation_results
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.errorhandler(404)
@@ -718,14 +754,24 @@ def flowchart():
     return "Flowchart functionality moved to device-specific pages"
 
 def populate_database_with_real_data():
-    """Populate database with real device data from web sources"""
+    """Populate database with real device data from CSV (preferred) or web sources"""
     try:
-        print("Fetching real device data...")
-        real_devices = device_scraper.get_real_device_data()
+        print("Fetching device data (CSV-preferred)...")
+        # Try CSV first - this is the preferred source
+        real_devices = device_scraper.load_devices_from_csv('devices.csv')
         
-        if not real_devices:
-            print("Using fallback device data...")
-            real_devices = FALLBACK_DEVICE_DATA
+        # Fallback to web scraping and fallback data if CSV is insufficient
+        if not real_devices or len(real_devices) < 8:
+            print("CSV insufficient or not found, attempting web scraping...")
+            scraped_devices = device_scraper.get_real_device_data()
+            if scraped_devices and len(scraped_devices) >= 8:
+                real_devices = scraped_devices
+                print(f"Successfully scraped {len(real_devices)} devices from web sources")
+            else:
+                print("Web scraping unsuccessful or insufficient, using fallback data...")
+                real_devices = FALLBACK_DEVICE_DATA
+        else:
+            print(f"Successfully loaded {len(real_devices)} devices from CSV")
         
         conn = sqlite3.connect('devices.db')
         cursor = conn.cursor()
@@ -733,7 +779,7 @@ def populate_database_with_real_data():
         # Clear existing data
         cursor.execute('DELETE FROM devices')
         
-        # Insert real device data
+        # Insert device data
         for device in real_devices:
             cursor.execute('''INSERT INTO devices 
                             (name, category, cpu_speed, ram, storage, screen_size, price) 
@@ -800,9 +846,9 @@ def get_device_image_url(device_name):
         image_num = abs(hash(device_name)) % 16 + 1  # Deterministic but varied
         return f'{base_path}/{image_num}.jpg'
 
-# Initialize database with real device data
+# Initialize database with real device data (CSV-preferred)
 print("Initializing database with device data...")
-populate_fallback_data()  # Use fallback data for immediate testing
+populate_database_with_real_data()
 
 @app.route("/refresh-devices", methods=["POST"])
 def refresh_devices():
@@ -935,22 +981,43 @@ def enhance_device_data_with_security():
     return security_features
 
 def get_retailer_links(device_name, category):
-    """Generate retailer links for purchasing"""
+    """Generate retailer links for purchasing with fallback options"""
     import urllib.parse
     encoded_name = urllib.parse.quote_plus(device_name)
     
     retailers = {
-        'amazon': f"https://amazon.co.uk/s?k={encoded_name}",
-        'currys': f"https://currys.co.uk/search?q={encoded_name}",
-        'johnlewis': f"https://johnlewis.com/search?search-term={encoded_name}",
+        'amazon': f"https://www.amazon.co.uk/s?k={encoded_name}",
+        'currys': f"https://www.currys.co.uk/search?keyword={encoded_name}",
+        'johnlewis': f"https://www.johnlewis.com/search?search-term={encoded_name}",
     }
     
     # Add category-specific retailers
-    if 'Apple' in device_name or 'Mac' in device_name or 'iPad' in device_name:
-        retailers['apple'] = f"https://apple.com/uk/shop/buy-{category.lower()}"
+    if any(brand in device_name for brand in ['Apple', 'Mac', 'iPad']):
+        retailers['apple'] = "https://www.apple.com/uk/shop"
     
-    if 'Microsoft' in device_name or 'Surface' in device_name:
-        retailers['microsoft'] = f"https://microsoft.com/en-gb/store/b/pc?q={encoded_name}"
+    if any(brand in device_name for brand in ['Microsoft', 'Surface']):
+        retailers['microsoft'] = "https://www.microsoft.com/en-gb/store"
+    
+    if 'Dell' in device_name:
+        retailers['dell'] = "https://www.dell.com/en-uk"
+    
+    if any(brand in device_name for brand in ['HP', 'Hewlett']):
+        retailers['hp'] = "https://store.hp.com/UKCtlg/Home"
+    
+    if 'Lenovo' in device_name:
+        retailers['lenovo'] = "https://www.lenovo.com/gb/en"
+    
+    if 'Samsung' in device_name:
+        retailers['samsung'] = "https://www.samsung.com/uk"
+    
+    if 'ASUS' in device_name:
+        retailers['asus'] = "https://www.asus.com/uk"
+    
+    if 'Google' in device_name or 'Pixel' in device_name:
+        retailers['google'] = "https://store.google.com/gb"
+    
+    # Add Scan and other UK retailers for tech products
+    retailers['scan'] = f"https://www.scan.co.uk/search?q={encoded_name}"
     
     return retailers
 

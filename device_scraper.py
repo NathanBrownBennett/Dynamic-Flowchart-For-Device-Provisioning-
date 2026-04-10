@@ -4,7 +4,46 @@ import re
 from bs4 import BeautifulSoup
 import time
 import random
+import csv
+import os
 from urllib.parse import quote_plus
+
+class LinkValidator:
+    """Validates retailer URLs are accessible"""
+    def __init__(self, timeout=5, retries=2):
+        self.timeout = timeout
+        self.retries = retries
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+    
+    def validate_url(self, url):
+        """Check if URL is accessible (returns True/False)"""
+        try:
+            for attempt in range(self.retries):
+                try:
+                    response = requests.head(url, timeout=self.timeout, headers=self.headers, allow_redirects=True)
+                    return response.status_code < 400  # 2xx, 3xx are valid
+                except requests.Timeout:
+                    if attempt < self.retries - 1:
+                        time.sleep(1)
+                    continue
+            return False
+        except Exception as e:
+            print(f"Link validation error for {url}: {e}")
+            return False
+    
+    def validate_retailer_links(self, retailer_links):
+        """Validate all retailer links for a device"""
+        results = {}
+        for retailer, url in retailer_links.items():
+            results[retailer] = {
+                'url': url,
+                'valid': self.validate_url(url)
+            }
+            time.sleep(0.5)  # Be respectful to servers
+        return results
+
 
 class DeviceDataScraper:
     def __init__(self):
@@ -13,6 +52,41 @@ class DeviceDataScraper:
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+        self.link_validator = LinkValidator()
+    
+    def load_devices_from_csv(self, csv_file='devices.csv'):
+        """Load device data from CSV file"""
+        devices = []
+        try:
+            csv_path = os.path.join(os.path.dirname(__file__), csv_file)
+            if not os.path.exists(csv_path):
+                print(f"CSV file not found: {csv_path}")
+                return devices
+            
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        device = {
+                            'name': row['name'],
+                            'category': row['category'],
+                            'cpu_speed': float(row['cpu_speed']),
+                            'ram': int(row['ram']),
+                            'storage': int(row['storage']),
+                            'screen_size': float(row['screen_size']),
+                            'price': int(row['price']),
+                            'source': row.get('source', 'CSV database')
+                        }
+                        devices.append(device)
+                    except (ValueError, KeyError) as e:
+                        print(f"Error parsing CSV row: {e}")
+                        continue
+            
+            print(f"Successfully loaded {len(devices)} devices from CSV")
+            return devices
+        except Exception as e:
+            print(f"Error loading CSV: {e}")
+            return devices
 
     def scrape_amazon_devices(self, search_terms):
         """Scrape device data from Amazon search results"""
@@ -201,7 +275,15 @@ class DeviceDataScraper:
         return cpu_speed, ram, storage, screen_size
 
     def get_real_device_data(self):
-        """Get real device data from multiple sources"""
+        """Get real device data from multiple sources (prioritize CSV, fallback to scraping)"""
+        # Try CSV first (reliable, doesn't change)
+        all_devices = self.load_devices_from_csv('devices.csv')
+        
+        if all_devices and len(all_devices) > 8:
+            print(f"CSV provided {len(all_devices)} devices, using as primary source")
+            return all_devices
+        
+        # Fallback to web scraping if CSV is insufficient
         search_terms = [
             'macbook air laptop',
             'dell xps laptop',
@@ -218,8 +300,11 @@ class DeviceDataScraper:
         
         # Scrape from Amazon
         print("Scraping Amazon...")
-        amazon_devices = self.scrape_amazon_devices(search_terms)
-        all_devices.extend(amazon_devices)
+        try:
+            amazon_devices = self.scrape_amazon_devices(search_terms)
+            all_devices.extend(amazon_devices)
+        except Exception as e:
+            print(f"Amazon scraping failed: {e}")
         
         # Scrape from Currys (commented out to avoid rate limiting)
         # print("Scraping Currys...")
