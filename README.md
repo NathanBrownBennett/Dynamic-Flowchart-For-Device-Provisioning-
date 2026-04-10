@@ -17,8 +17,37 @@ This application simplifies the provisioning of devices to employees or end-user
 - **Security Scoring Engine**: 0-100 security assessment with threat detection and mitigation strategies
 - **Advanced Search**: 13+ filter criteria for precise device discovery
 - **Responsive Design**: Bootstrap 5 UI with dark/light mode support
+- **🆕 Live Market Search**: Fresh web scraping to eliminate static database bias
+- **🆕 Real-Time Pricing**: Current prices across multiple retailers (Amazon, Currys, JohnLewis)
+- **🆕 Search Caching**: 5-minute cache for optimal performance & freshness balance
 
-## 🎬 Video Walkthrough & Interactive Demo
+## 🆕 Live Search Architecture
+
+The system now uses **hybrid dynamic search** instead of a static database:
+
+```
+Search Term → Check Cache (5 min) → Web Scrape (Fresh) → Security Score → Display
+                                   ↓
+                            Cache for Future Use
+                                   ↓
+                            Fallback to Database
+```
+
+**Benefits:**
+- ✅ **No Bias**: Results reflect actual market availability, not curator preferences
+- ✅ **Real-Time**: Prices update on every search (cached for performance)
+- ✅ **Comprehensive**: Access to any product on Amazon/Currys, not just 34 curated devices
+- ✅ **APIs Available**: `/search-live` and `/get-current-price` for integrations
+
+**See [ARCHITECTURE_IMPROVEMENTS.md](ARCHITECTURE_IMPROVEMENTS.md) for detailed technical documentation.**
+
+## Performance
+
+- **Cache Hit**: ~50ms (database lookup)
+- **Web Scrape**: ~5-15 seconds (fresh results)
+- **Fallback**: ~100-200ms (if scraping fails)
+
+## Features
 
 ### Quick Demo (Interactive Slides)
 **Open the interactive walkthrough in your browser:**

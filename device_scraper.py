@@ -313,6 +313,122 @@ class DeviceDataScraper:
         
         return all_devices
 
+    def search_devices_live(self, search_query, max_results=20):
+        """
+        Perform a fresh live search across retailers for a specific query.
+        Returns current market results, not cached database results.
+        """
+        try:
+            print(f"[LIVE SEARCH] Querying for: {search_query}")
+            results = []
+            
+            # Scrape Amazon for this specific query
+            search_url = f"https://www.amazon.co.uk/s?k={quote_plus(search_query)}&ref=nb_sb_noss"
+            response = self.session.get(search_url, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            products = soup.find_all('div', {'data-component-type': 's-search-result'})
+            
+            for product in products[:max_results]:
+                try:
+                    device_data = self.extract_amazon_product_data(product)
+                    if device_data:
+                        device_data['retailer'] = 'Amazon UK'
+                        device_data['search_query'] = search_query
+                        results.append(device_data)
+                        print(f"  Found: {device_data['name']} - £{device_data['price']}")
+                except Exception as e:
+                    print(f"  Error extracting product: {e}")
+                    continue
+            
+            # Also try Currys for better variety
+            try:
+                currys_url = f"https://www.currys.co.uk/search?q={quote_plus(search_query)}"
+                response = self.session.get(currys_url, timeout=10)
+                soup = BeautifulSoup(response.content, 'html.parser')
+                products = soup.find_all('article', class_=re.compile('product'))
+                
+                for product in products[:max_results//2]:  # Get fewer from Currys
+                    try:
+                        device_data = self.extract_currys_product_data(product)
+                        if device_data:
+                            device_data['retailer'] = 'Currys'
+                            device_data['search_query'] = search_query
+                            results.append(device_data)
+                            print(f"  Found: {device_data['name']} - £{device_data['price']}")
+                    except Exception as e:
+                        pass
+            except Exception as e:
+                print(f"Currys search failed: {e}")
+            
+            print(f"[LIVE SEARCH] Found {len(results)} results for '{search_query}'")
+            return results
+            
+        except Exception as e:
+            print(f"Live search error for '{search_query}': {e}")
+            return []
+
+    def get_retailer_current_price(self, device_name, retailer='amazon'):
+        """
+        Get current price from specific retailer via web scraping.
+        Returns price, availability, and link.
+        """
+        try:
+            if retailer.lower() == 'amazon':
+                search_url = f"https://www.amazon.co.uk/s?k={quote_plus(device_name)}&ref=nb_sb_noss"
+                response = self.session.get(search_url, timeout=10)
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                first_product = soup.find('div', {'data-component-type': 's-search-result'})
+                if first_product:
+                    price_elem = first_product.find('span', class_='a-price-whole')
+                    link_elem = first_product.find('a', class_='a-link-normal')
+                    
+                    price = 0
+                    if price_elem:
+                        price_text = price_elem.get_text(strip=True).replace(',', '')
+                        price = float(re.findall(r'\d+', price_text)[0]) if re.findall(r'\d+', price_text) else 0
+                    
+                    link = 'https://www.amazon.co.uk' + link_elem.get('href') if link_elem else None
+                    
+                    return {
+                        'price': price,
+                        'link': link,
+                        'available': True,
+                        'retailer': 'Amazon UK'
+                    }
+            
+            elif retailer.lower() == 'currys':
+                search_url = f"https://www.currys.co.uk/search?q={quote_plus(device_name)}"
+                response = self.session.get(search_url, timeout=10)
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                first_product = soup.find('article', class_=re.compile('product'))
+                if first_product:
+                    price_elem = first_product.find('span', class_=re.compile('price'))
+                    link_elem = first_product.find('a', class_=re.compile('product-link'))
+                    
+                    price = 0
+                    if price_elem:
+                        price_text = price_elem.get_text(strip=True)
+                        price_match = re.search(r'£([\d,]+)', price_text)
+                        price = float(price_match.group(1).replace(',', '')) if price_match else 0
+                    
+                    link = link_elem.get('href') if link_elem else None
+                    
+                    return {
+                        'price': price,
+                        'link': link,
+                        'available': True,
+                        'retailer': 'Currys'
+                    }
+            
+            return {'price': 0, 'link': None, 'available': False, 'retailer': retailer}
+            
+        except Exception as e:
+            print(f"Error fetching current price from {retailer}: {e}")
+            return {'price': 0, 'link': None, 'available': False, 'retailer': retailer, 'error': str(e)}
+
 # Fallback data if scraping fails
 FALLBACK_DEVICE_DATA = [
     {

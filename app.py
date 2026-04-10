@@ -66,6 +66,31 @@ device_scraper = DeviceDataScraper()
 LIVE_LISTINGS_CACHE = { 'data': [], 'ts': 0 }
 LIVE_CACHE_TTL = 900  # 15 minutes
 
+# Search results cache - keyed by search term
+SEARCH_RESULTS_CACHE = {}
+SEARCH_CACHE_TTL = 300  # 5 minutes
+
+def get_search_cache_key(search_term, price_min, price_max, cpu_speed, ram, storage, screen_size, use_case):
+    """Generate cache key for search results"""
+    return f"{search_term}|{price_min}|{price_max}|{cpu_speed}|{ram}|{storage}|{screen_size}|{use_case}"
+
+def get_cached_search_results(cache_key):
+    """Get cached search results if still fresh"""
+    now = time.time()
+    if cache_key in SEARCH_RESULTS_CACHE:
+        results, timestamp = SEARCH_RESULTS_CACHE[cache_key]
+        if now - timestamp < SEARCH_CACHE_TTL:
+            print(f"[CACHE] Using cached search results for: {cache_key.split('|')[0]}")
+            return results
+        else:
+            del SEARCH_RESULTS_CACHE[cache_key]  # Expired
+    return None
+
+def cache_search_results(cache_key, results):
+    """Cache search results with timestamp"""
+    SEARCH_RESULTS_CACHE[cache_key] = (results, time.time())
+    print(f"[CACHE] Cached {len(results)} results for: {cache_key.split('|')[0]}")
+
 def get_cached_live_listings():
     """Return cached live listings or refresh if TTL expired."""
     now = time.time()
@@ -403,6 +428,8 @@ def apply_rule_engine(devices_list: list, use_case: str):
     enriched = []
     for d in devices_list:
         # Normalize keys between DB devices and scraped devices
+        scraped_image_url = d.get('image_url') or d.get('image')
+        
         device = {
             'id': d.get('id'),
             'name': d.get('name'),
@@ -412,7 +439,7 @@ def apply_rule_engine(devices_list: list, use_case: str):
             'storage': d.get('storage', 0),
             'screen_size': d.get('screen_size', 0),
             'price': d.get('price', 0),
-            'image': d.get('image') or d.get('image_url'),
+            'image': get_device_image_url(d.get('name') or '', scraped_image_url),  # Use scraped URL if available
             'source': d.get('source')
         }
         os, cpu_vendor = infer_os_and_cpu(device['name'] or '', device.get('category') or '')
@@ -521,7 +548,7 @@ def index():
         print("Form Submitted. About to search for devices with form data:", form_data)
         
         # Extract form data with defaults
-        name = form_data.get('searchBar', '')
+        name = form_data.get('searchBar', '').strip()
         price_range_min = form_data.get('price_range_min', '100')
         price_range_max = form_data.get('price_range_max', '1500')
         cpu_speed = float(form_data.get('cpu_speed', 0))
@@ -532,13 +559,9 @@ def index():
         device_type = form_data.get('device_type', '')
         operating_system = form_data.get('operating_system', '')
         brand = form_data.get('brand', '')
-        cores = form_data.get('cores', '')
-        threads = form_data.get('threads', '')
-        ram_generation = form_data.get('ram_generation', '')
-        storage_type = form_data.get('storage_type', '')
         
         print(f"Search parameters:")
-        print(f"  Name: {name}")
+        print(f"  Search Term: {name}")
         print(f"  Price Range: {price_range_min} - {price_range_max}")
         print(f"  CPU Speed: {cpu_speed}")
         print(f"  RAM: {ram}")
@@ -548,100 +571,95 @@ def index():
         print(f"  Device Type: {device_type}")
         print(f"  Operating System: {operating_system}")
         print(f"  Brand: {brand}")
-        print(f"  Cores: {cores}")
-        print(f"  Threads: {threads}")
-        print(f"  RAM Generation: {ram_generation}")
-        print(f"  Storage Type: {storage_type}")
-        
-        # Build dynamic query based on provided filters
-        query_conditions = []
-        params = []
-        
-        # Always include basic filters
-        query_conditions.append("name LIKE ?")
-        params.append(f'%{name}%')
-        
-        query_conditions.append("price BETWEEN ? AND ?")
-        params.extend([int(price_range_min), int(price_range_max)])
-        
-        if cpu_speed > 0:
-            query_conditions.append("cpu_speed >= ?")
-            params.append(cpu_speed)
-        
-        if ram > 0:
-            query_conditions.append("ram >= ?")
-            params.append(ram)
-        
-        if storage > 0:
-            query_conditions.append("storage >= ?")
-            params.append(storage)
-        
-        if screen_size > 0:
-            query_conditions.append("screen_size >= ?")
-            params.append(screen_size)
-        
-        # Add optional filters if provided
-        if device_type:
-            query_conditions.append("category LIKE ?")
-            params.append(f'%{device_type}%')
-        
-        if brand:
-            query_conditions.append("name LIKE ?")
-            params.append(f'%{brand}%')
-        
-        # Construct final query
-        offset = (page - 1) * page_size
-        # Count query
-        count_query = f"SELECT COUNT(*) FROM devices WHERE {' AND '.join(query_conditions)}"
-        # Main query with pagination
-        query = f"""
-        SELECT * FROM devices 
-        WHERE {' AND '.join(query_conditions)}
-        ORDER BY 
-            CASE 
-                WHEN ? = 'Government' THEN (ram + storage/10 + cpu_speed*10)
-                WHEN ? = 'Work' THEN (ram + storage/20 + cpu_speed*5)
-                ELSE (price * -1)
-            END DESC
-        LIMIT ? OFFSET ?
-        """
-        params_for_query = params + [use, use, page_size, offset]
-        print(f"Pagination -> page {page} offset {offset} size {page_size}")
-        
-        print(f"Query: {query}")
-        print(f"Params: {params}")
         
         try:
-            # Get total count
-            try:
-                conn_ct = sqlite3.connect('devices.db')
-                cursor_ct = conn_ct.cursor()
-                cursor_ct.execute(count_query, params)
-                total_results = cursor_ct.fetchone()[0]
-                conn_ct.close()
-            except Exception as ce:
-                print(f"Count query error: {ce}")
-            devices = query_database(query, params_for_query)
-            devices = convert_to_dict(devices)
-            # Enrich search results with rule engine based on selected use-case
+            # Check cache first
+            cache_key = get_search_cache_key(name, price_range_min, price_range_max, cpu_speed, ram, storage, screen_size, use)
+            cached_results = get_cached_search_results(cache_key)
+            
+            if cached_results:
+                devices = cached_results
+            elif name:  # If user provided a search term, use LIVE scraping instead of static database
+                print(f"[LIVE SEARCH] Searching for: {name}")
+                # Perform live web scraping for fresh results
+                live_results = device_scraper.search_devices_live(name, max_results=20)
+                
+                if live_results:
+                    # Convert scraped results to dict format
+                    devices = [{
+                        'id': None,
+                        'name': item.get('name'),
+                        'category': item.get('category'),
+                        'cpu_speed': item.get('cpu_speed', 0),
+                        'ram': item.get('ram', 0),
+                        'storage': item.get('storage', 0),
+                        'screen_size': item.get('screen_size', 0),
+                        'price': item.get('price', 0),
+                        'image': item.get('image_url'),  # Direct image URL from scraper
+                        'image_url': item.get('image_url'),  # Also preserve as image_url for apply_rule_engine
+                        'source': item.get('retailer', 'Web Search'),
+                        'search_query': name
+                    } for item in live_results]
+                    
+                    # Apply filtering on live results
+                    if cpu_speed > 0 or ram > 0 or storage > 0 or screen_size > 0:
+                        devices = [d for d in devices if 
+                            (d['cpu_speed'] >= cpu_speed if cpu_speed > 0 else True) and
+                            (d['ram'] >= ram if ram > 0 else True) and
+                            (d['storage'] >= storage if storage > 0 else True) and
+                            (d['screen_size'] >= screen_size if screen_size > 0 else True)
+                        ]
+                    
+                    # Filter by price range
+                    try:
+                        price_min = int(price_range_min)
+                        price_max = int(price_range_max)
+                        devices = [d for d in devices if price_min <= d['price'] <= price_max]
+                    except:
+                        pass
+                    
+                    # Filter by device type if specified
+                    if device_type:
+                        devices = [d for d in devices if device_type.lower() in (d.get('category') or '').lower()]
+                    
+                    # Filter by brand if specified
+                    if brand:
+                        devices = [d for d in devices if brand.lower() in (d.get('name') or '').lower()]
+                    
+                    # Cache the filtered results
+                    if devices:
+                        cache_search_results(cache_key, devices)
+                else:
+                    print(f"No live results found for '{name}', falling back to database")
+                    devices = recommended_devices[:8]
+                    
+            else:  # No search term, use database recommendations
+                print("[SEARCH] No search term provided, using database recommendations")
+                devices = recommended_devices
+            
+            # Enrich search results with security scoring
             devices = apply_rule_engine(devices, use_case=use)
-            # Filter out disallowed for strict contexts (Government/Work); for Personal show all with labels
+            
+            # Filter based on use-case requirements
             if use in ['Government', 'Public Sector', 'Work', 'Business', 'Enterprise']:
                 devices = [d for d in devices if d.get('allowed')]
             
-            if not devices:
-                # Fallback to showing recommended devices with a message
-                devices = recommended_devices[:8]  # Show top 8 recommended
-                print("No devices found matching criteria, showing recommended devices")
+            total_results = len(devices)
             
+            if not devices:
+                print(f"No devices matched all criteria, showing recommended alternatives")
+                devices = enriched_recommended[:8]
+                
         except Exception as e:
-            print(f"Database query error: {e}")
+            print(f"Search error: {e}")
+            import traceback
+            traceback.print_exc()
             error_occurred = True
-            devices = []
+            devices = enriched_recommended[:8]
         
         print(f"Final devices result: {len(devices)} devices found")
         print(f"Form submission result: form_submitted={form_submitted}, error_occurred={error_occurred}")
-        print("Loading Index HTML with sql results")
+        print("Rendering results")
 
     total_pages = (total_results // page_size + (1 if total_results % page_size else 0)) if total_results else 0
     return render_template(
@@ -816,11 +834,13 @@ def populate_fallback_data():
     conn.close()
     print(f"Populated database with {len(FALLBACK_DEVICE_DATA)} fallback devices")
 
-def get_device_image_url(device_name):
-    """Get a real device image URL or fallback to placeholder"""
-    # For now, use local placeholder images to avoid 404 errors
-    # In a production environment, you would have proper device images
+def get_device_image_url(device_name, scraped_url=None):
+    """Get device image URL: prioritize scraped images, fallback to static placeholders"""
+    # Use scraped image URL if available (from web scraping)
+    if scraped_url and (scraped_url.startswith('http://') or scraped_url.startswith('https://')):
+        return scraped_url
     
+    # Fallback: use local placeholder images if no scraped URL
     # Map device types to appropriate placeholder images
     device_name_lower = device_name.lower()
     
@@ -849,6 +869,101 @@ def get_device_image_url(device_name):
 # Initialize database with real device data (CSV-preferred)
 print("Initializing database with device data...")
 populate_database_with_real_data()
+
+@app.route("/api/image-proxy", methods=["GET"])
+def image_proxy():
+    """
+    Proxy for external device images to handle CORS and caching.
+    Prevents broken image links and improves load reliability.
+    """
+    try:
+        image_url = request.args.get('url', '')
+        if not image_url or not (image_url.startswith('http://') or image_url.startswith('https://')):
+            return "Invalid image URL", 400
+        
+        # Fetch the image with timeout
+        response = requests.get(image_url, timeout=5)
+        response.raise_for_status()
+        
+        # Return image with caching headers
+        return response.content, 200, {
+            'Content-Type': response.headers.get('Content-Type', 'image/jpeg'),
+            'Cache-Control': 'public, max-age=86400'  # Cache for 24 hours
+        }
+    except Exception as e:
+        print(f"Image proxy error: {e}")
+        # Return placeholder or 1x1 transparent GIF
+        return b'', 404
+
+@app.route("/search-live", methods=["POST"])
+def search_live():
+    """
+    Endpoint for live device search across retailers.
+    Takes search term and returns fresh market results.
+    """
+    try:
+        data = request.get_json()
+        search_term = data.get('query', '').strip()
+        max_results = data.get('max_results', 20)
+        
+        if not search_term or len(search_term) < 2:
+            return jsonify({'error': 'Search term too short'}), 400
+        
+        print(f"[API] Live search for: {search_term}")
+        results = device_scraper.search_devices_live(search_term, max_results=max_results)
+        
+        if not results:
+            return jsonify({
+                'query': search_term,
+                'results': [],
+                'message': 'No devices found for this search term',
+                'source': 'live_web_search'
+            }), 200
+        
+        # Apply security scoring to results
+        enriched_results = apply_rule_engine(results, use_case='Personal')
+        
+        return jsonify({
+            'query': search_term,
+            'results': enriched_results[:max_results],
+            'total_found': len(enriched_results),
+            'source': 'live_web_search'
+        }), 200
+        
+    except Exception as e:
+        print(f"Live search error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route("/get-current-price", methods=["POST"])
+def get_current_price():
+    """
+    Get current pricing from specific retailer.
+    Real-time price comparison across retailers.
+    """
+    try:
+        data = request.get_json()
+        device_name = data.get('device_name', '')
+        retailer = data.get('retailer', 'amazon')  # amazon, currys, johnlewis, etc.
+        
+        if not device_name:
+            return jsonify({'error': 'Device name required'}), 400
+        
+        print(f"[API] Fetching current price from {retailer} for: {device_name}")
+        
+        price_info = device_scraper.get_retailer_current_price(device_name, retailer)
+        
+        return jsonify({
+            'device': device_name,
+            'retailer': retailer,
+            'price': price_info['price'],
+            'link': price_info['link'],
+            'available': price_info['available'],
+            'timestamp': time.time()
+        }), 200
+        
+    except Exception as e:
+        print(f"Price fetch error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route("/refresh-devices", methods=["POST"])
 def refresh_devices():
