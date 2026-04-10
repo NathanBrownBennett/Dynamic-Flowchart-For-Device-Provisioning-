@@ -197,8 +197,6 @@ Additionally, you must have `graphviz` and `ipywidgets` installed if you plan to
 
 **Quick Start Video**: Watch the interactive walkthrough in `VIDEO_WALKTHROUGH.html` for guided tour.
 
--- Watch "Demo Video.mov" to assist you if needed
-
 ## Project Structure
 
 - **app.py**: The main Flask application file. Handles routing, form submission, querying the database, and rendering HTML templates.

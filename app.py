@@ -14,6 +14,11 @@ error_occurred = False
 devices = []
 
 
+@app.route('/favicon.ico')
+def favicon():
+    return send_file(os.path.join(app.root_path, 'static', 'favicon.svg'), mimetype='image/svg+xml')
+
+
 @app.errorhandler(404)
 def not_found(error):
     return render_template('404.html'), 404
