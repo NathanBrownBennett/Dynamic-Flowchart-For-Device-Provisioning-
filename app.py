@@ -1,18 +1,129 @@
-from flask import Flask, render_template, request, jsonify, send_file, Response, abort
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, Response, abort
 import os
 import sqlite3
-import graphviz
+import html
+from datetime import datetime, timezone
+try:
+    import graphviz
+except ImportError:  # Graphviz is optional; the SVG fallback keeps WSGI hosting viable.
+    graphviz = None
 import random
 import threading
 import requests
 from device_scraper import DeviceDataScraper, FALLBACK_DEVICE_DATA
 import re
 import time
+import functools
+import hmac
+import ipaddress
+import socket
+from urllib.parse import urlparse
 
 app = Flask(__name__)
+app.config.update(
+    # Keep mutable operational actions disabled until an operator explicitly
+    # provisions a secret in the hosting environment.
+    ADMIN_TOKEN=os.environ.get('PROVISIONING_ADMIN_TOKEN', ''),
+    ENABLE_LIVE_SCRAPING=os.environ.get('ENABLE_LIVE_SCRAPING', 'false').lower() in ('1', 'true', 'yes', 'on'),
+    DATABASE_PATH=os.environ.get('DATABASE_PATH', os.path.join(app.root_path, 'devices.db')),
+    IMAGE_PROXY_MAX_BYTES=int(os.environ.get('IMAGE_PROXY_MAX_BYTES', '5242880')),
+    PUBLIC_RATE_LIMIT=int(os.environ.get('PUBLIC_RATE_LIMIT', '30')),
+    PUBLIC_RATE_WINDOW=int(os.environ.get('PUBLIC_RATE_WINDOW', '60')),
+    FRONTEND_DIST=os.environ.get('FRONTEND_DIST', os.path.join(app.root_path, 'frontend', 'dist')),
+    SERVE_FRONTEND_AT_ROOT=os.environ.get('SERVE_FRONTEND_AT_ROOT', 'false').lower() in ('1', 'true', 'yes', 'on'),
+    MAX_CONTENT_LENGTH=int(os.environ.get('MAX_CONTENT_LENGTH', '32768')),
+)
 form_submitted = False
 error_occurred = False
 devices = []
+RATE_LIMIT_STATE = {}
+
+
+def _env_hosts(name, default=''):
+    return {
+        host.strip().lower().rstrip('.')
+        for host in os.environ.get(name, default).split(',')
+        if host.strip()
+    }
+
+
+def _is_public_hostname(hostname):
+    """Reject hostnames that resolve to local, private, or reserved IPs."""
+    try:
+        addresses = {item[4][0] for item in socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)}
+        return bool(addresses) and all(not ipaddress.ip_address(address).is_private
+                                       and not ipaddress.ip_address(address).is_loopback
+                                       and not ipaddress.ip_address(address).is_link_local
+                                       and not ipaddress.ip_address(address).is_reserved
+                                       for address in addresses)
+    except (OSError, ValueError):
+        return False
+
+
+def _allowed_outbound_url(value, env_name, default_hosts):
+    parsed = urlparse(value or '')
+    hostname = (parsed.hostname or '').lower().rstrip('.')
+    if parsed.scheme != 'https' or not hostname or parsed.username or parsed.password:
+        return None
+    if hostname not in _env_hosts(env_name, default_hosts):
+        return None
+    if not _is_public_hostname(hostname):
+        return None
+    return parsed
+
+
+def public_rate_limited(view):
+    """Small single-process guard; use provider/API rate limiting in hosting too."""
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        now = time.monotonic()
+        key = request.remote_addr or 'unknown'
+        window = app.config['PUBLIC_RATE_LIMIT']
+        bucket = RATE_LIMIT_STATE.get(key, [])
+        bucket = [stamp for stamp in bucket if now - stamp < app.config['PUBLIC_RATE_WINDOW']]
+        if len(bucket) >= window:
+            return jsonify({'error': 'rate limit exceeded'}), 429
+        bucket.append(now)
+        RATE_LIMIT_STATE[key] = bucket
+        return view(*args, **kwargs)
+    return wrapped
+
+
+def admin_mutation_required(view):
+    """Protect data-refresh/mutation routes with an operator bearer token.
+
+    The token is intentionally read only from the environment. If it is not
+    configured, the route is unavailable rather than accidentally public.
+    """
+    @functools.wraps(view)
+    def wrapped(*args, **kwargs):
+        configured = app.config.get('ADMIN_TOKEN', '')
+        if not configured:
+            return jsonify({'error': 'operator action is disabled'}), 503
+        supplied = request.headers.get('Authorization', '')
+        scheme, _, token = supplied.partition(' ')
+        if scheme.lower() != 'bearer' or not token or not hmac.compare_digest(token, configured):
+            return jsonify({'error': 'operator authorization required'}), 401
+        return view(*args, **kwargs)
+    return wrapped
+
+
+@app.after_request
+def add_security_headers(response):
+    """Baseline headers suitable for a reverse-proxy hosted deployment."""
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    if request.is_secure:
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    return response
+
+
+@app.route('/healthz')
+def healthz():
+    """Cheap liveness/readiness probe with no database mutation."""
+    return jsonify({'status': 'ok', 'service': 'device-provisioning-toolkit'}), 200
 
 
 @app.route('/favicon.ico')
@@ -21,6 +132,7 @@ def favicon():
 
 
 @app.route('/validate-links', methods=['POST'])
+@admin_mutation_required
 def validate_links():
     """Validate retailer links for a device (async helper)"""
     try:
@@ -34,7 +146,14 @@ def validate_links():
         validation_results = {}
         for retailer, url in retailer_links.items():
             try:
-                response = requests.head(url, timeout=3, allow_redirects=True)
+                if not _allowed_outbound_url(
+                    url,
+                    'RETAILER_ALLOWED_HOSTS',
+                    'amazon.co.uk,www.amazon.co.uk,currys.co.uk,www.currys.co.uk'
+                ):
+                    validation_results[retailer] = {'url': url, 'valid': False, 'error': 'host not allowlisted'}
+                    continue
+                response = requests.head(url, timeout=3, allow_redirects=False)
                 validation_results[retailer] = {
                     'url': url,
                     'valid': response.status_code < 400,
@@ -122,7 +241,7 @@ def get_cached_live_listings():
 
 def ensure_db_indexes():
     try:
-        conn = sqlite3.connect('devices.db')
+        conn = sqlite3.connect(app.config['DATABASE_PATH'])
         cursor = conn.cursor()
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_devices_name ON devices(name)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_devices_category ON devices(category)')
@@ -131,8 +250,6 @@ def ensure_db_indexes():
         conn.close()
     except Exception as e:
         print(f"Index creation error: {e}")
-
-ensure_db_indexes()
 
 # Minimum requirements based on UK government recommendations
 minimum_requirements = {
@@ -472,7 +589,7 @@ def apply_rule_engine(devices_list: list, use_case: str):
     return enriched
 
 def query_database(query, params):
-    conn = sqlite3.connect('devices.db')
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
     cursor = conn.cursor()
     print(f"Executing query: {query} with params: {params}")
     cursor.execute(query, params)
@@ -513,9 +630,215 @@ def resources():
         "device_security": "https://www.example.com/device-security-best-practices"
     })
 
+
+def _utc_now():
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _catalogue_metadata_map(device_ids):
+    if not device_ids:
+        return {}
+    placeholders = ','.join('?' for _ in device_ids)
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    rows = conn.execute(
+        f'SELECT device_id, source, source_url, retrieved_at, price_checked_at, availability FROM device_catalogue_metadata WHERE device_id IN ({placeholders})',
+        list(device_ids)
+    ).fetchall()
+    conn.close()
+    return {
+        row[0]: {
+            'source': row[1], 'source_url': row[2], 'retrieved_at': row[3],
+            'price_checked_at': row[4], 'availability': row[5],
+        } for row in rows
+    }
+
+
+def _api_device(device_row, use_case='Personal', metadata=None):
+    """Return the stable public device representation used by the Vite app."""
+    item = apply_rule_engine(convert_to_dict([device_row]), use_case=use_case)[0]
+    metadata = metadata if metadata is not None else _catalogue_metadata_map([device_row[0]]).get(device_row[0])
+    item['catalogue'] = metadata or {
+        'source': 'Curated local catalogue', 'source_url': None,
+        'retrieved_at': None, 'price_checked_at': None, 'availability': 'unknown',
+    }
+    return item
+
+
+def _api_filters(data):
+    data = data or {}
+    try:
+        page = max(1, min(int(data.get('page', 1)), 10000))
+        page_size = max(1, min(int(data.get('page_size', 20)), 50))
+        price_min = float(data.get('price_min', 0) or 0)
+        price_max = float(data.get('price_max', 1000000) or 1000000)
+        cpu_speed = float(data.get('cpu_speed', 0) or 0)
+        ram = int(data.get('ram', 0) or 0)
+        storage = int(data.get('storage', 0) or 0)
+        screen_size = float(data.get('screen_size', 0) or 0)
+    except (TypeError, ValueError):
+        raise ValueError('numeric filters are invalid')
+    if price_min < 0 or price_max < price_min or cpu_speed < 0 or ram < 0 or storage < 0 or screen_size < 0:
+        raise ValueError('numeric filters are out of range')
+    return {
+        'query': str(data.get('query', '') or '').strip()[:100],
+        'category': str(data.get('category', '') or '').strip()[:40],
+        'brand': str(data.get('brand', '') or '').strip()[:40],
+        'operating_system': str(data.get('operating_system', '') or '').strip()[:40],
+        'use_case': str(data.get('use_case', 'Personal') or 'Personal')[:40],
+        'price_min': price_min, 'price_max': price_max, 'cpu_speed': cpu_speed,
+        'ram': ram, 'storage': storage, 'screen_size': screen_size,
+        'page': page, 'page_size': page_size,
+    }
+
+
+def _api_catalogue(filters):
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    rows = conn.execute('SELECT * FROM devices ORDER BY id').fetchall()
+    conn.close()
+    query = filters['query'].lower()
+    category = filters['category'].lower()
+    brand = filters['brand'].lower()
+    operating_system = filters['operating_system'].lower()
+    matched = []
+    metadata_map = _catalogue_metadata_map([row[0] for row in rows])
+    for row in rows:
+        name, row_category = (row[1] or '').lower(), (row[2] or '').lower()
+        if query and query not in name:
+            continue
+        if category and category not in row_category:
+            continue
+        if brand and brand not in name:
+            continue
+        if not (filters['price_min'] <= row[7] <= filters['price_max']):
+            continue
+        if row[3] < filters['cpu_speed'] or row[4] < filters['ram'] or row[5] < filters['storage'] or row[6] < filters['screen_size']:
+            continue
+        if operating_system and operating_system not in infer_os_and_cpu(row[1] or '', row[2] or '')[0].lower():
+            continue
+        matched.append(_api_device(row, filters['use_case'], metadata_map.get(row[0])))
+    start = (filters['page'] - 1) * filters['page_size']
+    end = start + filters['page_size']
+    return matched[start:end], len(matched)
+
+
+@app.route('/api/v1/healthz')
+def api_healthz():
+    return jsonify({'status': 'ok', 'service': 'device-provisioning-toolkit', 'api_version': 'v1'})
+
+
+@app.route('/api/v1/catalogue/status', methods=['GET'])
+@public_rate_limited
+def api_catalogue_status():
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    rows = conn.execute('''SELECT source, source_url, MAX(retrieved_at),
+                          MAX(price_checked_at), COUNT(*)
+                          FROM device_catalogue_metadata GROUP BY source, source_url
+                          ORDER BY MAX(retrieved_at) DESC''').fetchall()
+    product_count = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
+    conn.close()
+    return jsonify({
+        'api_version': 'v1', 'product_count': product_count,
+        'live_scraping': False,
+        'sources': [{'source': row[0], 'source_url': row[1], 'retrieved_at': row[2],
+                     'price_checked_at': row[3], 'product_count': row[4]} for row in rows],
+    })
+
+
+@app.route('/api/v1/devices', methods=['GET'])
+@public_rate_limited
+def api_devices():
+    try:
+        filters = _api_filters(request.args)
+        items, total = _api_catalogue(filters)
+        return jsonify({'items': items, 'page': filters['page'], 'page_size': filters['page_size'], 'total': total, 'live_scraping': False})
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+
+@app.route('/api/v1/devices/<int:device_id>', methods=['GET'])
+@public_rate_limited
+def api_device(device_id):
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    row = conn.execute('SELECT * FROM devices WHERE id = ?', (device_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'device not found'}), 404
+    return jsonify({'item': _api_device(row, 'Work'), 'api_version': 'v1'})
+
+
+@app.route('/api/v1/search', methods=['POST'])
+@public_rate_limited
+def api_search():
+    try:
+        filters = _api_filters(request.get_json(silent=True) or {})
+        items, total = _api_catalogue(filters)
+        return jsonify({'items': items, 'page': filters['page'], 'page_size': filters['page_size'], 'total': total, 'live_scraping': False, 'api_version': 'v1'})
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+
+@app.route('/api/v1/devices/<int:device_id>/comparisons', methods=['GET'])
+@public_rate_limited
+def api_comparisons(device_id):
+    category = request.args.get('category', 'same')
+    price_range = request.args.get('price_range', 'similar')
+    performance = request.args.get('performance', 'similar')
+    if category not in {'same', 'all'} or price_range not in {'similar', 'lower', 'higher', 'all'} or performance not in {'similar', 'higher', 'all'}:
+        return jsonify({'error': 'comparison filter is invalid'}), 400
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    current = conn.execute('SELECT * FROM devices WHERE id = ?', (device_id,)).fetchone()
+    if not current:
+        conn.close()
+        return jsonify({'items': [], 'total': 0, 'api_version': 'v1'}), 200
+    query = 'SELECT * FROM devices WHERE id != ?'
+    params = [device_id]
+    if category == 'same':
+        query += ' AND category = ?'
+        params.append(current[2])
+    if price_range == 'similar':
+        query += ' AND price BETWEEN ? AND ?'
+        params.extend([current[7] - 200, current[7] + 200])
+    elif price_range == 'lower':
+        query += ' AND price < ?'
+        params.append(current[7])
+    elif price_range == 'higher':
+        query += ' AND price > ?'
+        params.append(current[7])
+    if performance == 'similar':
+        query += ' AND cpu_speed BETWEEN ? AND ?'
+        params.extend([current[3] - 0.5, current[3] + 0.5])
+    elif performance == 'higher':
+        query += ' AND cpu_speed > ?'
+        params.append(current[3])
+    rows = conn.execute(query + ' LIMIT 6', params).fetchall()
+    conn.close()
+    metadata_map = _catalogue_metadata_map([row[0] for row in rows])
+    return jsonify({'items': [_api_device(row, 'Work', metadata_map.get(row[0])) for row in rows], 'total': len(rows), 'api_version': 'v1'})
+
+
+def serve_frontend(filename='index.html'):
+    """Serve a built Vite app when present; templates remain the fallback."""
+    dist = app.config['FRONTEND_DIST']
+    if not os.path.isdir(dist):
+        abort(404)
+    requested = filename or 'index.html'
+    path = os.path.join(dist, requested)
+    if not os.path.isfile(path):
+        requested = 'index.html'
+    return send_from_directory(dist, requested)
+
+
+@app.route('/app', defaults={'filename': 'index.html'})
+@app.route('/app/', defaults={'filename': 'index.html'})
+@app.route('/app/<path:filename>')
+def frontend_app(filename):
+    return serve_frontend(filename)
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     global form_submitted, error_occurred, devices
+    if app.config['SERVE_FRONTEND_AT_ROOT'] and os.path.isdir(app.config['FRONTEND_DIST']):
+        return serve_frontend('index.html')
     light_mode_image = 'static/images/backgrounds/2.jpg'
     dark_mode_image = 'static/images/backgrounds/1.png'
     form_submitted = False
@@ -523,7 +846,7 @@ def index():
     
     # Fetch recommended devices from the database
     print("Getting recommended devices")
-    conn = sqlite3.connect('devices.db')
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM devices')
     recommended_devices = cursor.fetchall()
@@ -579,7 +902,7 @@ def index():
             
             if cached_results:
                 devices = cached_results
-            elif name:  # If user provided a search term, use LIVE scraping instead of static database
+            elif name and app.config['ENABLE_LIVE_SCRAPING']:  # Optional live search
                 print(f"[LIVE SEARCH] Searching for: {name}")
                 # Perform live web scraping for fresh results
                 live_results = device_scraper.search_devices_live(name, max_results=20)
@@ -633,7 +956,7 @@ def index():
                     print(f"No live results found for '{name}', falling back to database")
                     devices = recommended_devices[:8]
                     
-            else:  # No search term, use database recommendations
+            else:  # Live search disabled or no search term: use local catalogue
                 print("[SEARCH] No search term provided, using database recommendations")
                 devices = recommended_devices
             
@@ -678,7 +1001,7 @@ def index():
 
 @app.route('/device/<int:device_id>')
 def device(device_id):
-    conn = sqlite3.connect('devices.db')
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
     cursor = conn.cursor()
     cursor.execute('SELECT * FROM devices WHERE id = ?', (device_id,))
     device = cursor.fetchone()
@@ -708,12 +1031,6 @@ def device(device_id):
     return render_template('device.html', device=device, flowchart_image_path=flowchart_image_path)
 
 def create_flowchart(device, usage):
-    dot = graphviz.Digraph(comment='Device Recommendations')
-    dot.node('A', f'Device: {device["name"]}')
-    dot.node('B', 'Recommended Software')
-    dot.node('C', 'Security Measures')
-    dot.edges(['AB', 'AC'])
-
     usage_to_table = {
         'Personal': 'PersonalUseSoftware',
         'Student': 'StudentUseSoftware',
@@ -721,7 +1038,7 @@ def create_flowchart(device, usage):
         'Government': 'GovernmentUseSoftware'
     }
 
-    conn = sqlite3.connect('devices.db')
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
     cursor = conn.cursor()
 
     table_name = usage_to_table.get(usage, 'PersonalUseSoftware')  # Default to PersonalUseSoftware if usage is not found
@@ -731,26 +1048,52 @@ def create_flowchart(device, usage):
 
     software_entries = cursor.fetchall()
 
-    for i, entry in enumerate(software_entries, start=1):
-        software_node = f'S{i}'
-        dot.node(software_node, entry[0])
-        dot.edge('B', software_node)
-
     query = "SELECT * FROM SecurityRecommendations"
     cursor.execute(query)
     security_entries = cursor.fetchall()
 
-    for i, entry in enumerate(security_entries, start=1):
-        security_node = f'C{i}'
-        dot.node(security_node, entry[1])
-        dot.edge('C', security_node)
-
-    output_base = os.path.join('static', 'flowcharts', str(device['id']))
-    dot.render(output_base, format='svg', cleanup=True)
-
     conn.close()
 
+    output_base = os.path.join(app.static_folder or os.path.join(app.root_path, 'static'), 'flowcharts', str(device['id']))
+    os.makedirs(os.path.dirname(output_base), exist_ok=True)
+    if graphviz is not None:
+        try:
+            dot = graphviz.Digraph(comment='Device Recommendations')
+            dot.node('A', f'Device: {device["name"]}')
+            dot.node('B', 'Recommended Software')
+            dot.node('C', 'Security Measures')
+            dot.edges(['AB', 'AC'])
+            for i, entry in enumerate(software_entries, start=1):
+                dot.node(f'S{i}', entry[0])
+                dot.edge('B', f'S{i}')
+            for i, entry in enumerate(security_entries, start=1):
+                dot.node(f'C{i}', entry[1])
+                dot.edge('C', f'C{i}')
+            dot.render(output_base, format='svg', cleanup=True)
+        except Exception as exc:
+            print(f"Graphviz unavailable; using simple SVG fallback: {exc}")
+            _write_flowchart_fallback(output_base, device, software_entries, security_entries)
+    else:
+        _write_flowchart_fallback(output_base, device, software_entries, security_entries)
+
     return output_base + '.svg'
+
+
+def _write_flowchart_fallback(output_base, device, software_entries, security_entries):
+    """Write a readable static SVG when the Graphviz binary is unavailable."""
+    labels = [f'Device: {device["name"]}', 'Recommended software']
+    labels.extend(entry[0] for entry in software_entries[:6])
+    labels.append('Security measures')
+    labels.extend(entry[1] for entry in security_entries[:6])
+    rows = []
+    for index, label in enumerate(labels):
+        safe_label = html.escape(str(label)[:120])
+        y = 36 + index * 28
+        rows.append(f'<text x="24" y="{y}" fill="#17324d" font-family="Arial" font-size="15">{safe_label}</text>')
+    height = max(70, 20 + len(rows) * 28)
+    svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="760" height="{height}" viewBox="0 0 760 {height}"><rect width="100%" height="100%" fill="#f4f8fb"/><rect x="10" y="10" width="740" height="{height - 20}" rx="12" fill="#dcecf5"/>{"".join(rows)}</svg>'
+    with open(output_base + '.svg', 'w', encoding='utf-8') as handle:
+        handle.write(svg)
 
 @app.route("/flowchart/<path:image_path>")
 def serve_flowchart(image_path):
@@ -791,22 +1134,7 @@ def populate_database_with_real_data():
         else:
             print(f"Successfully loaded {len(real_devices)} devices from CSV")
         
-        conn = sqlite3.connect('devices.db')
-        cursor = conn.cursor()
-        
-        # Clear existing data
-        cursor.execute('DELETE FROM devices')
-        
-        # Insert device data
-        for device in real_devices:
-            cursor.execute('''INSERT INTO devices 
-                            (name, category, cpu_speed, ram, storage, screen_size, price) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                          (device['name'], device['category'], device['cpu_speed'], 
-                           device['ram'], device['storage'], device['screen_size'], device['price']))
-        
-        conn.commit()
-        conn.close()
+        replace_catalogue(real_devices)
         print(f"Successfully populated database with {len(real_devices)} devices")
         
     except Exception as e:
@@ -816,23 +1144,135 @@ def populate_database_with_real_data():
 
 def populate_fallback_data():
     """Populate database with fallback data if web scraping fails"""
-    conn = sqlite3.connect('devices.db')
-    cursor = conn.cursor()
-    
-    # Clear existing data
-    cursor.execute('DELETE FROM devices')
-    
-    # Insert fallback device data
-    for device in FALLBACK_DEVICE_DATA:
-        cursor.execute('''INSERT INTO devices 
-                        (name, category, cpu_speed, ram, storage, screen_size, price) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                      (device['name'], device['category'], device['cpu_speed'], 
-                       device['ram'], device['storage'], device['screen_size'], device['price']))
-    
-    conn.commit()
-    conn.close()
+    replace_catalogue(FALLBACK_DEVICE_DATA)
     print(f"Populated database with {len(FALLBACK_DEVICE_DATA)} fallback devices")
+
+
+def replace_catalogue(products, feed_source='Curated local catalogue', feed_source_url=None, retrieved_at=None):
+    """Atomically replace the pilot catalogue and its freshness metadata."""
+    retrieved_at = retrieved_at or _utc_now()
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    cursor = conn.cursor()
+    try:
+        cursor.execute('DELETE FROM device_catalogue_metadata')
+        cursor.execute('DELETE FROM devices')
+        for product in products:
+            cursor.execute('''INSERT INTO devices
+                (name, category, cpu_speed, ram, storage, screen_size, price)
+                VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (product['name'], product['category'], product['cpu_speed'],
+                 product['ram'], product['storage'], product['screen_size'], product['price']))
+            cursor.execute('''INSERT INTO device_catalogue_metadata
+                (device_id, source, source_url, retrieved_at, price_checked_at, availability)
+                VALUES (?, ?, ?, ?, ?, ?)''',
+                (cursor.lastrowid, str(product.get('source') or feed_source)[:160],
+                 product.get('source_url') or feed_source_url, retrieved_at,
+                 product.get('price_checked_at') or retrieved_at,
+                 str(product.get('availability') or 'unknown')[:40]))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def validate_catalogue_feed(payload):
+    """Validate a product-only feed before it can replace the catalogue."""
+    if not isinstance(payload, dict):
+        raise ValueError('feed must be a JSON object')
+    products = payload.get('products')
+    if not isinstance(products, list) or not products or len(products) > 500:
+        raise ValueError('feed must contain between 1 and 500 products')
+    source = str(payload.get('source') or '').strip()
+    if not source or len(source) > 160:
+        raise ValueError('feed source is required and must be 160 characters or fewer')
+    source_url = payload.get('source_url')
+    if source_url:
+        parsed = urlparse(str(source_url))
+        if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError('source_url must be an HTTPS attribution URL without credentials')
+    retrieved_at = str(payload.get('retrieved_at') or _utc_now())
+    normalised = []
+    for index, product in enumerate(products):
+        if not isinstance(product, dict):
+            raise ValueError(f'product {index + 1} must be an object')
+        try:
+            item = {
+                'name': str(product['name']).strip()[:160],
+                'category': str(product['category']).strip()[:60],
+                'cpu_speed': float(product.get('cpu_speed', 0)),
+                'ram': int(product.get('ram', 0)),
+                'storage': int(product.get('storage', 0)),
+                'screen_size': float(product.get('screen_size', 0)),
+                'price': float(product.get('price', 0)),
+                'availability': str(product.get('availability') or 'unknown')[:40],
+                'source': source,
+                'source_url': source_url,
+                'price_checked_at': product.get('price_checked_at') or retrieved_at,
+            }
+        except (KeyError, TypeError, ValueError):
+            raise ValueError(f'product {index + 1} has invalid fields')
+        if not item['name'] or not item['category'] or item['price'] < 0 or item['cpu_speed'] < 0 or item['ram'] < 0 or item['storage'] < 0 or item['screen_size'] < 0:
+            raise ValueError(f'product {index + 1} has invalid values')
+        normalised.append(item)
+    return normalised, source, source_url, retrieved_at
+
+
+@app.route('/admin/catalogue/import', methods=['POST'])
+@admin_mutation_required
+def import_catalogue_feed():
+    try:
+        products, source, source_url, retrieved_at = validate_catalogue_feed(request.get_json(silent=True))
+        replace_catalogue(products, source, source_url, retrieved_at)
+        return jsonify({'success': True, 'count': len(products), 'source': source, 'retrieved_at': retrieved_at}), 202
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception:
+        return jsonify({'error': 'catalogue import failed'}), 500
+
+
+def ensure_database_schema():
+    """Create the small pilot schema when a clean deployment has no DB file."""
+    database_dir = os.path.dirname(os.path.abspath(app.config['DATABASE_PATH']))
+    os.makedirs(database_dir, exist_ok=True)
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS devices
+        (id INTEGER PRIMARY KEY, name TEXT, category TEXT, cpu_speed REAL,
+         ram INTEGER, storage INTEGER, screen_size REAL, price REAL)''')
+    for table in ('PersonalUseSoftware', 'StudentUseSoftware', 'WorkUseSoftware', 'GovernmentUseSoftware'):
+        cursor.execute(f'CREATE TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY, Software TEXT)')
+    cursor.execute('CREATE TABLE IF NOT EXISTS SecurityRecommendations (id INTEGER PRIMARY KEY, Recommendation TEXT)')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS device_catalogue_metadata
+        (device_id INTEGER PRIMARY KEY, source TEXT NOT NULL, source_url TEXT,
+         retrieved_at TEXT NOT NULL, price_checked_at TEXT, availability TEXT NOT NULL,
+         FOREIGN KEY(device_id) REFERENCES devices(id))''')
+    if not cursor.execute('SELECT 1 FROM PersonalUseSoftware LIMIT 1').fetchone():
+        cursor.executemany('INSERT INTO PersonalUseSoftware (Software) VALUES (?)',
+                           [(name,) for name in ('Norton 360', 'Bitdefender Total Security', 'Avast Free')])
+    if not cursor.execute('SELECT 1 FROM StudentUseSoftware LIMIT 1').fetchone():
+        cursor.executemany('INSERT INTO StudentUseSoftware (Software) VALUES (?)',
+                           [(name,) for name in ('Bitdefender Total Security', 'Avast Premium Security')])
+    if not cursor.execute('SELECT 1 FROM WorkUseSoftware LIMIT 1').fetchone():
+        cursor.executemany('INSERT INTO WorkUseSoftware (Software) VALUES (?)',
+                           [(name,) for name in ('Bitdefender GravityZone', 'Sophos Intercept X')])
+    if not cursor.execute('SELECT 1 FROM GovernmentUseSoftware LIMIT 1').fetchone():
+        cursor.executemany('INSERT INTO GovernmentUseSoftware (Software) VALUES (?)',
+                           [(name,) for name in ('Bitdefender GravityZone', 'Credential Guard')])
+    if not cursor.execute('SELECT 1 FROM SecurityRecommendations LIMIT 1').fetchone():
+        cursor.executemany('INSERT INTO SecurityRecommendations (Recommendation) VALUES (?)',
+                           [(name,) for name in ('Secure Boot', 'Regular Patching', 'Multi-Factor Authentication (MFA)')])
+    conn.commit()
+    has_devices = cursor.execute('SELECT 1 FROM devices LIMIT 1').fetchone()
+    if has_devices:
+        cursor.execute('''INSERT OR IGNORE INTO device_catalogue_metadata
+            (device_id, source, source_url, retrieved_at, price_checked_at, availability)
+            SELECT id, 'Curated local catalogue', NULL, ?, NULL, 'unknown' FROM devices''', (_utc_now(),))
+        conn.commit()
+    conn.close()
+    if not has_devices:
+        populate_database_with_real_data()
 
 def get_device_image_url(device_name, scraped_url=None):
     """Get device image URL: prioritize scraped images, fallback to static placeholders"""
@@ -866,11 +1306,13 @@ def get_device_image_url(device_name, scraped_url=None):
         image_num = abs(hash(device_name)) % 16 + 1  # Deterministic but varied
         return f'{base_path}/{image_num}.jpg'
 
-# Initialize database with real device data (CSV-preferred)
+# Initialize the pilot schema without requiring an untracked local database.
 print("Initializing database with device data...")
-populate_database_with_real_data()
+ensure_database_schema()
+ensure_db_indexes()
 
 @app.route("/api/image-proxy", methods=["GET"])
+@public_rate_limited
 def image_proxy():
     """
     Proxy for external device images to handle CORS and caching.
@@ -878,16 +1320,33 @@ def image_proxy():
     """
     try:
         image_url = request.args.get('url', '')
-        if not image_url or not (image_url.startswith('http://') or image_url.startswith('https://')):
+        parsed = _allowed_outbound_url(
+            image_url,
+            'IMAGE_PROXY_ALLOWED_HOSTS',
+            'm.media-amazon.com,images-na.ssl-images-amazon.com,images.unsplash.com'
+        )
+        # Only public HTTPS hosts explicitly allowlisted by the operator are fetched.
+        if not parsed:
             return "Invalid image URL", 400
         
-        # Fetch the image with timeout
-        response = requests.get(image_url, timeout=5)
+        response = requests.get(image_url, timeout=(3, 5), allow_redirects=False, stream=True)
         response.raise_for_status()
+        content_type = response.headers.get('Content-Type', '').split(';', 1)[0].lower()
+        if content_type not in {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}:
+            return "Unsupported image type", 415
+        content_length = response.headers.get('Content-Length')
+        if content_length and int(content_length) > app.config['IMAGE_PROXY_MAX_BYTES']:
+            return "Image too large", 413
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=65536):
+            body.extend(chunk)
+            if len(body) > app.config['IMAGE_PROXY_MAX_BYTES']:
+                return "Image too large", 413
+        response.close()
         
         # Return image with caching headers
-        return response.content, 200, {
-            'Content-Type': response.headers.get('Content-Type', 'image/jpeg'),
+        return bytes(body), 200, {
+            'Content-Type': content_type,
             'Cache-Control': 'public, max-age=86400'  # Cache for 24 hours
         }
     except Exception as e:
@@ -896,6 +1355,7 @@ def image_proxy():
         return b'', 404
 
 @app.route("/search-live", methods=["POST"])
+@public_rate_limited
 def search_live():
     """
     Endpoint for live device search across retailers.
@@ -909,6 +1369,8 @@ def search_live():
         if not search_term or len(search_term) < 2:
             return jsonify({'error': 'Search term too short'}), 400
         
+        if not app.config['ENABLE_LIVE_SCRAPING']:
+            return jsonify({'error': 'live search is disabled'}), 503
         print(f"[API] Live search for: {search_term}")
         results = device_scraper.search_devices_live(search_term, max_results=max_results)
         
@@ -935,6 +1397,7 @@ def search_live():
         return jsonify({'error': str(e)}), 500
 
 @app.route("/get-current-price", methods=["POST"])
+@public_rate_limited
 def get_current_price():
     """
     Get current pricing from specific retailer.
@@ -948,6 +1411,8 @@ def get_current_price():
         if not device_name:
             return jsonify({'error': 'Device name required'}), 400
         
+        if not app.config['ENABLE_LIVE_SCRAPING']:
+            return jsonify({'error': 'live pricing is disabled'}), 503
         print(f"[API] Fetching current price from {retailer} for: {device_name}")
         
         price_info = device_scraper.get_retailer_current_price(device_name, retailer)
@@ -966,6 +1431,7 @@ def get_current_price():
         return jsonify({'error': str(e)}), 500
 
 @app.route("/refresh-devices", methods=["POST"])
+@admin_mutation_required
 def refresh_devices():
     """Refresh device data from web sources"""
     try:
@@ -975,22 +1441,7 @@ def refresh_devices():
         if not real_devices:
             real_devices = FALLBACK_DEVICE_DATA
         
-        conn = sqlite3.connect('devices.db')
-        cursor = conn.cursor()
-        
-        # Clear existing data
-        cursor.execute('DELETE FROM devices')
-        
-        # Insert new device data
-        for device in real_devices:
-            cursor.execute('''INSERT INTO devices 
-                            (name, category, cpu_speed, ram, storage, screen_size, price) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                          (device['name'], device['category'], device['cpu_speed'], 
-                           device['ram'], device['storage'], device['screen_size'], device['price']))
-        
-        conn.commit()
-        conn.close()
+        replace_catalogue(real_devices, feed_source='Operator refresh')
         
         return jsonify({
             'success': True, 
@@ -1016,7 +1467,7 @@ def compare_devices():
         performance = data.get('performance')
         
         # Get the current device for comparison
-        conn = sqlite3.connect('devices.db')
+        conn = sqlite3.connect(app.config['DATABASE_PATH'])
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM devices WHERE id = ?', (device_id,))
         current_device = cursor.fetchone()
@@ -1284,6 +1735,7 @@ def build_hardening_script(os_name: str, task_ids: list):
     return script, filename_ext
 
 @app.route('/generate-hardening-script', methods=['POST'])
+@public_rate_limited
 def generate_hardening_script():
     try:
         form_tasks = request.form.getlist('tasks')
@@ -1322,15 +1774,7 @@ def background_scrape():
     try:
         real_devices = device_scraper.get_real_device_data()
         if real_devices:
-            conn = sqlite3.connect('devices.db')
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM devices')
-            for d in real_devices:
-                cursor.execute('''INSERT INTO devices (name, category, cpu_speed, ram, storage, screen_size, price)
-                                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                               (d['name'], d['category'], d['cpu_speed'], d['ram'], d['storage'], d['screen_size'], d['price']))
-            conn.commit()
-            conn.close()
+            replace_catalogue(real_devices, feed_source='Background operator refresh')
             print(f"[AsyncScrape] Updated {len(real_devices)} devices")
         else:
             print("[AsyncScrape] No real devices fetched; skipping update")
@@ -1343,6 +1787,7 @@ def background_scrape():
         print("[AsyncScrape] Background scrape finished")
 
 @app.route('/async-refresh', methods=['POST'])
+@admin_mutation_required
 def async_refresh():
     global SCRAPE_THREAD
     with SCRAPE_LOCK:
@@ -1355,5 +1800,6 @@ def async_refresh():
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8002))
+    host = os.environ.get('HOST', '127.0.0.1')
     debug_mode = os.environ.get('FLASK_DEBUG', '').lower() in ('1', 'true', 'yes', 'on')
-    app.run(debug=debug_mode, port=port)
+    app.run(host=host, debug=debug_mode, port=port)

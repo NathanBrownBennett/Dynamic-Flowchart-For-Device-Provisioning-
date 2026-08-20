@@ -17,35 +17,57 @@ This application simplifies the provisioning of devices to employees or end-user
 - **Security Scoring Engine**: 0-100 security assessment with threat detection and mitigation strategies
 - **Advanced Search**: 13+ filter criteria for precise device discovery
 - **Responsive Design**: Bootstrap 5 UI with dark/light mode support
-- **🆕 Live Market Search**: Fresh web scraping to eliminate static database bias
-- **🆕 Real-Time Pricing**: Current prices across multiple retailers (Amazon, Currys, JohnLewis)
-- **🆕 Search Caching**: 5-minute cache for optimal performance & freshness balance
+- **Online catalogue architecture**: Searchable reviewed products with a path to permitted provider feeds
+- **Plain-English security guidance**: Explain the practical meaning of device risks and hardening steps
+- **Safe provider boundary**: Live retailer access is disabled by default and must use approved feeds/APIs
+- **React/Vite frontend**: Optional same-service frontend served by Flask at `/app/`
 
-## 🆕 Live Search Architecture
+## Online service architecture
 
-The system now uses **hybrid dynamic search** instead of a static database:
+The hosted service is designed as a catalogue and comparison experience, not as
+a browser scraper:
 
 ```
-Search Term → Check Cache (5 min) → Web Scrape (Fresh) → Security Score → Display
-                                   ↓
-                            Cache for Future Use
-                                   ↓
-                            Fallback to Database
+Browser → React/Vite search UI → Flask API → reviewed catalogue/cache
+                                      ↓
+                         plain-English security guidance
+                                      ↓
+                         comparison and hardening plan
 ```
 
-**Benefits:**
-- ✅ **No Bias**: Results reflect actual market availability, not curator preferences
-- ✅ **Real-Time**: Prices update on every search (cached for performance)
-- ✅ **Comprehensive**: Access to any product on Amazon/Currys, not just 34 curated devices
-- ✅ **APIs Available**: `/search-live` and `/get-current-price` for integrations
+The browser should never call retailers directly. A future provider ingestion
+worker may use permitted affiliate APIs, product feeds or approved retailer
+interfaces to update catalogue records with source, retrieval time, expiry,
+price/availability caveats and attribution. The current live scraping routes
+remain disabled by default.
+
+For non-Docker development and WSGI hosting, see
+[HOSTING_NON_DOCKER.md](HOSTING_NON_DOCKER.md). The target BStudioB deployment
+is a founder-approved subdomain such as `provisioning.bstudiob.co.uk`; DNS and
+hosting changes are intentionally not performed by this repository workflow.
+
+### React frontend development
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+For a same-service hosted build, run `npm run build` in `frontend/` and start
+Flask/Gunicorn with `SERVE_FRONTEND_AT_ROOT=true`. Docker can build the same
+frontend automatically, but is not required.
 
 **See [ARCHITECTURE_IMPROVEMENTS.md](ARCHITECTURE_IMPROVEMENTS.md) for detailed technical documentation.**
 
 ## Performance
 
-- **Cache Hit**: ~50ms (database lookup)
-- **Web Scrape**: ~5-15 seconds (fresh results)
-- **Fallback**: ~100-200ms (if scraping fails)
+- The current public API reads the reviewed SQLite catalogue and applies
+  bounded server-side filters.
+- Provider data is intentionally not fetched in a browser request. A future
+  permitted feed/API worker should record source, retrieval time and expiry.
+- Performance figures will be published after a representative hosted load
+  test; local timings are not production guarantees.
 
 ## Features
 
@@ -129,7 +151,7 @@ open http://localhost:8012
 
 ### Test Results:
 ```
-✓ 7/7 E2E tests passing (100%)
+✓ Backend/API/security tests passing
 ✓ Home page rendering ✓
 ✓ Device search with security scoring ✓
 ✓ Device details & security guidance ✓
@@ -243,19 +265,18 @@ Additionally, you must have `graphviz` and `ipywidgets` installed if you plan to
 - **Benchmark Metrics**: Normalized hardware scoring (CPU, RAM, Storage, Security blend)
 - **Retailer Links Generation**: Dynamic multi-vendor URL creation per device
 - **Debloat Tools Database**: 13+ OS-aware performance optimization recommendations
-- **Live Listings Cache**: 15-minute TTL cache for real-time retailer data
+- **Provider boundary**: Live retailer access is disabled by default pending permitted feeds/APIs
 - **Database**: SQLite3 with indexed queries for fast device search
 
-### Frontend (Bootstrap 5 + Jinja2)
+### Frontend (React + Vite, with legacy Jinja templates retained)
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
 - **Dark/Light Mode**: Accessibility toggle
-- **Tab-based Navigation**: Overview, Security Guide, Compare, Purchase sections
-- **Interactive Carousels**: Recommended devices with benchmark badges
-- **Multi-vendor Buttons**: Color-coded retailer buttons (Amazon, Currys, JohnLewis, Apple, Microsoft)
-- **Dynamic Filtering**: 13+ search criteria with real-time filtering
+- **Plain-English detail view**: Security meaning, first steps, risks, performance and purchase comparison
+- **Versioned API**: Read/search/detail/comparison contract under `/api/v1/*`
+- **Dynamic Filtering**: Bounded server-side catalogue filters
 
 ### Testing (Playwright + Node.js)
-- **E2E Test Suite**: 7 comprehensive tests (all passing ✅)
+- **Deterministic tests**: Frontend API-contract tests plus backend/API/security tests
 - **Automated Navigation**: Test home page, search, device details, tabs
 - **Security Coverage**: Verify security guidance and recommendations
 - **CI/CD Ready**: Scriptable Playwright tests for continuous integration
@@ -316,8 +337,8 @@ def get_retailer_links(device_name, category)
 - [x] Use-case specific recommendations (Personal, Business, Government, Education)
 - [x] Responsive UI with Bootstrap 5
 - [x] Dark/Light mode toggle
-- [x] Live retailer listings with 15-min cache
-- [x] Comprehensive E2E test suite (7/7 passing)
+- [x] Provider integration boundary disabled by default
+- [x] Deterministic API/security test coverage
 - [x] Automated Playwright verification
 - [x] Interactive video walkthrough (11 slides)
 

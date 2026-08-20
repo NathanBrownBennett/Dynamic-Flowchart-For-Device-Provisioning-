@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.venv
+venv
+__pycache__
+.playwright-mcp
+node_modules
+frontend/node_modules
+frontend/dist
+*.pyc
+test-results
+Demo Video.mov

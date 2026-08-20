@@ -1,0 +1,18 @@
+{
+  "source": "Approved product feed name",
+  "source_url": "https://feed-provider.example/catalogue",
+  "retrieved_at": "2026-08-19T00:00:00+00:00",
+  "products": [
+    {
+      "name": "Example Business Laptop 14",
+      "category": "Laptops",
+      "cpu_speed": 3.4,
+      "ram": 16,
+      "storage": 512,
+      "screen_size": 14,
+      "price": 899,
+      "availability": "in_stock",
+      "price_checked_at": "2026-08-19T00:00:00+00:00"
+    }
+  ]
+}

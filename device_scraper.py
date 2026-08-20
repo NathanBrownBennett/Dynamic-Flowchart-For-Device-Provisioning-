@@ -22,7 +22,7 @@ class LinkValidator:
         try:
             for attempt in range(self.retries):
                 try:
-                    response = requests.head(url, timeout=self.timeout, headers=self.headers, allow_redirects=True)
+                    response = requests.head(url, timeout=self.timeout, headers=self.headers, allow_redirects=False)
                     return response.status_code < 400  # 2xx, 3xx are valid
                 except requests.Timeout:
                     if attempt < self.retries - 1:
@@ -53,6 +53,27 @@ class DeviceDataScraper:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         self.link_validator = LinkValidator()
+        self.request_timeout = (3, 10)
+        self.max_html_bytes = int(os.environ.get('SCRAPER_MAX_HTML_BYTES', '2097152'))
+
+    def _get_html(self, url):
+        """Fetch bounded retailer HTML with no redirect-based trust expansion."""
+        response = self.session.get(
+            url, timeout=self.request_timeout, allow_redirects=False, stream=True
+        )
+        response.raise_for_status()
+        content_length = response.headers.get('Content-Length')
+        if content_length and int(content_length) > self.max_html_bytes:
+            response.close()
+            raise ValueError('retailer response too large')
+        body = bytearray()
+        for chunk in response.iter_content(chunk_size=65536):
+            body.extend(chunk)
+            if len(body) > self.max_html_bytes:
+                response.close()
+                raise ValueError('retailer response too large')
+        response.close()
+        return bytes(body)
     
     def load_devices_from_csv(self, csv_file='devices.csv'):
         """Load device data from CSV file"""
@@ -97,8 +118,7 @@ class DeviceDataScraper:
                 # Amazon search URL
                 search_url = f"https://www.amazon.co.uk/s?k={quote_plus(term)}&ref=nb_sb_noss"
                 
-                response = self.session.get(search_url)
-                soup = BeautifulSoup(response.content, 'html.parser')
+                soup = BeautifulSoup(self._get_html(search_url), 'html.parser')
                 
                 # Find product containers
                 products = soup.find_all('div', {'data-component-type': 's-search-result'})
@@ -166,8 +186,7 @@ class DeviceDataScraper:
             try:
                 search_url = f"https://www.currys.co.uk/search?q={quote_plus(term)}"
                 
-                response = self.session.get(search_url)
-                soup = BeautifulSoup(response.content, 'html.parser')
+                soup = BeautifulSoup(self._get_html(search_url), 'html.parser')
                 
                 # Find product containers
                 products = soup.find_all('article', class_=re.compile('product'))
@@ -324,8 +343,7 @@ class DeviceDataScraper:
             
             # Scrape Amazon for this specific query
             search_url = f"https://www.amazon.co.uk/s?k={quote_plus(search_query)}&ref=nb_sb_noss"
-            response = self.session.get(search_url, timeout=10)
-            soup = BeautifulSoup(response.content, 'html.parser')
+            soup = BeautifulSoup(self._get_html(search_url), 'html.parser')
             
             products = soup.find_all('div', {'data-component-type': 's-search-result'})
             
@@ -344,8 +362,7 @@ class DeviceDataScraper:
             # Also try Currys for better variety
             try:
                 currys_url = f"https://www.currys.co.uk/search?q={quote_plus(search_query)}"
-                response = self.session.get(currys_url, timeout=10)
-                soup = BeautifulSoup(response.content, 'html.parser')
+                soup = BeautifulSoup(self._get_html(currys_url), 'html.parser')
                 products = soup.find_all('article', class_=re.compile('product'))
                 
                 for product in products[:max_results//2]:  # Get fewer from Currys
@@ -376,8 +393,7 @@ class DeviceDataScraper:
         try:
             if retailer.lower() == 'amazon':
                 search_url = f"https://www.amazon.co.uk/s?k={quote_plus(device_name)}&ref=nb_sb_noss"
-                response = self.session.get(search_url, timeout=10)
-                soup = BeautifulSoup(response.content, 'html.parser')
+                soup = BeautifulSoup(self._get_html(search_url), 'html.parser')
                 
                 first_product = soup.find('div', {'data-component-type': 's-search-result'})
                 if first_product:
@@ -400,8 +416,7 @@ class DeviceDataScraper:
             
             elif retailer.lower() == 'currys':
                 search_url = f"https://www.currys.co.uk/search?q={quote_plus(device_name)}"
-                response = self.session.get(search_url, timeout=10)
-                soup = BeautifulSoup(response.content, 'html.parser')
+                soup = BeautifulSoup(self._get_html(search_url), 'html.parser')
                 
                 first_product = soup.find('article', class_=re.compile('product'))
                 if first_product:

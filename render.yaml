@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: bstudiob-device-provisioning-staging
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: SERVE_FRONTEND_AT_ROOT
+        value: "true"
+      - key: ENABLE_LIVE_SCRAPING
+        value: "false"
+      - key: DATABASE_PATH
+        value: /tmp/devices.db
+      - key: PUBLIC_RATE_LIMIT
+        value: "30"
+      - key: PUBLIC_RATE_WINDOW
+        value: "60"
+      - key: MAX_CONTENT_LENGTH
+        value: "32768"
+      - key: IMAGE_PROXY_MAX_BYTES
+        value: "5242880"

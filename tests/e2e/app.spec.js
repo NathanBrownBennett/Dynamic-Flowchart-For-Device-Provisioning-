@@ -52,11 +52,11 @@ test.describe('Device Provisioning Toolkit - intended behavior', () => {
       .toBeTruthy();
   });
 
-  test('async refresh endpoint is available from UI-triggered API', async ({ request }) => {
+  test('async refresh endpoint is not public without operator authorization', async ({ request }) => {
     const res = await request.post('/async-refresh');
-    expect(res.status()).toBe(202);
+    expect(res.status()).toBe(503);
     const json = await res.json();
-    expect(['started', 'in_progress']).toContain(json.status);
+    expect(json.error).toBe('operator action is disabled');
   });
 
   test('404 routes return safe custom UX page', async ({ page }) => {
