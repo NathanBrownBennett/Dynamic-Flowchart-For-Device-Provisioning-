@@ -68,16 +68,21 @@ blueprint can be created.
 
 ### No-cost Render staging alternative
 
-`render.yaml` contains an unapplied Render Free Docker blueprint for a
+`render.yaml` contains the Render Free Docker blueprint for a
 constrained staging/demo service. Docker is used because the app needs both
 Python and the Vite/Node build stage. It deliberately uses one worker,
 disables live scraping, does not configure a custom domain, and places SQLite
 on `/tmp` because Render Free has no persistent filesystem. Treat the service
 as disposable and read-only: do not enable catalogue mutation, operator
-controls, or personal data. A Render account, repository connection and any
-provider approval are still required before deployment. Render Free services
-sleep when idle, so this is not an always-on or production substitute for a
-paid persistent host.
+controls, or personal data. The deployed staging service is
+`https://bstudiob-device-provisioning-staging.onrender.com` (commit `1904ba5`,
+Free plan, separate from Buildy). Render Free services sleep when idle, so
+this is not an always-on or production substitute for a paid persistent host.
+
+Live staging smoke checks on 20 August 2026 returned HTTP 200 for both
+`/healthz` and `/`; `/healthz` returned the device-provisioning service status
+and the root returned the React/Vite application shell. No custom domain,
+secret, payment or production data was configured.
 
 The browser prerequisites and current Chromium status are recorded in
 [BROWSER_TESTING.md](BROWSER_TESTING.md). The prepared, unapplied host and

@@ -1,6 +1,6 @@
 # Milestone status and founder handoff
 
-Date: 2026-08-19
+Date: 2026-08-20
 
 ## Completed locally
 
@@ -35,7 +35,12 @@ Date: 2026-08-19
   created.
 - A no-cost Render Free staging blueprint is prepared in `render.yaml`. It is
   intentionally disposable (`/tmp` SQLite), read-only/demo-oriented and has
-  no custom domain or secret values; no Render service has been created.
+  no custom domain or secret values.
+- Render staging is live as the separate service
+  `bstudiob-device-provisioning-staging` at
+  `https://bstudiob-device-provisioning-staging.onrender.com`, deployed from
+  commit `1904ba5` on the Free plan. This is separate from Buildy; no payment,
+  upgrade or custom domain was added.
 - Founder reports that the existing Railway workspace was downgraded to its
   Free plan. This preserves a no-cost staging option, but the plan, service
   health, persistence and public URL remain unverified from this worktree.
@@ -43,6 +48,17 @@ Date: 2026-08-19
   exceeded, so a separate device-provisioning project cannot be created there
   without an upgrade. The existing Buildy project is intentionally not being
   reused.
+
+## Render staging evidence (2026-08-20)
+
+- Service status: Live; Docker runtime; one Free-plan service; no custom
+  domain.
+- `GET /healthz`: HTTP 200, `{"service":"device-provisioning-toolkit","status":"ok"}`.
+- `GET /`: HTTP 200 and the React/Vite application shell is served.
+- Response checks include HSTS, `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY` and a restrictive Permissions Policy.
+- Render Free instances sleep when idle and the SQLite database is on `/tmp`;
+  this is disposable staging only. Live scraping remains disabled.
 
 ## Verification completed
 
@@ -93,10 +109,9 @@ The Railway route is documented in
 [`STAGING_RAILWAY_RUNBOOK.md`](STAGING_RAILWAY_RUNBOOK.md), but has not been
 deployed.
 
-1. Use the BStudioB-owned Render Free disposable route (`render.yaml`) as the
-   no-cost fallback. Render authentication is still required in the open
-   Chrome profile before the blueprint can be created; no payment is needed
-   for the intended disposable staging shape.
+1. Keep the separate Render Free service as the no-cost staging route. Do not
+   treat it as production, add personal data, or enable mutation/operator
+   controls.
 2. Import a reviewed, permitted sample feed and verify freshness, attribution,
    stale-data behavior and operator audit logs.
 3. Complete HTTPS, proxy, backup/restore and failure-mode checks; the local
