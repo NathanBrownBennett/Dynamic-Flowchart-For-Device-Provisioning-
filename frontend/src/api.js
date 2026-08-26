@@ -10,6 +10,7 @@ const api = async (path, options = {}) => {
 
 export const fetchDevices = (filters = {}) => api('/api/v1/devices?' + new URLSearchParams(filters))
 export const fetchCatalogueStatus = () => api('/api/v1/catalogue/status')
+export const fetchCriteria = () => api('/api/v1/criteria')
 export const searchDevices = (filters) => api('/api/v1/search', { method: 'POST', body: JSON.stringify(filters) })
-export const fetchDevice = (id) => api(`/api/v1/devices/${id}`)
+export const fetchDevice = (id, context = {}) => api(`/api/v1/devices/${id}?` + new URLSearchParams(context))
 export const fetchComparisons = (id, filters) => api(`/api/v1/devices/${id}/comparisons?` + new URLSearchParams(filters))

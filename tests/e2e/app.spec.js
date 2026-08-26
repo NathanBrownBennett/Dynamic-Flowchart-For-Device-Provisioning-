@@ -1,85 +1,68 @@
 const { test, expect } = require('@playwright/test');
 
-test.describe('Device Provisioning Toolkit - intended behavior', () => {
-  test('home page renders key intent sections', async ({ page }) => {
+test.describe('Device Provisioning Toolkit - interactive pilot', () => {
+  test('home page explains the decision workflow', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: /Device Provisioning Toolkit/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Find Your Device/i })).toBeVisible();
-    await expect(page.getByRole('heading', { name: /Secure Recommended Devices/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Choose the right device with confidence/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Start comparing/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Tell us what you need/i })).toBeVisible();
   });
 
-  test('device search flow returns security-verified results', async ({ page }) => {
+  test('domestic search returns reviewed recommendations', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: /Find Your Device/i }).click();
+    await page.getByLabel('What is it for?').selectOption('Personal');
+    await page.getByLabel('What matters most?').selectOption('security');
+    await page.getByRole('button', { name: /Show recommendations/i }).click();
 
-    await page.locator('#searchBar').fill('Mac');
-    await page.locator('#use').selectOption('Work');
-    await page.locator('#device_type').selectOption('Laptops');
-
-    await page.getByRole('button', { name: /Find Secure Devices/i }).click();
-
-    await expect(page.getByRole('heading', { name: /Security-Verified Search Results/i })).toBeVisible();
-    await expect(page.locator('.device-card-result').first()).toBeVisible();
-    await expect(page.locator('.security-badge').first()).toContainText(/Excellent|Good|Adequate|Risky/);
+    await expect(page.getByRole('heading', { name: /Reviewed devices/i })).toBeVisible();
+    await expect(page.locator('.device-card').first()).toBeVisible();
+    await expect(page.locator('.score').first()).toContainText('%');
   });
 
-  test('device details page provides security guidance and hardening script options', async ({ page }) => {
-    await page.goto('/device/1');
+  test('business role context reaches device review', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('What is it for?').selectOption('Work');
+    await page.getByLabel('Work role').selectOption('privileged_admin');
+    await page.getByRole('button', { name: /Show recommendations/i }).click();
+    await page.locator('.device-card').first().getByRole('button', { name: /Review device/i }).click();
 
-    await expect(page.locator('.display-4')).toBeVisible();
-    await page.locator('#security-tab').click();
-    await expect(page.getByRole('heading', { name: /Complete Security Setup Guide/i })).toBeVisible();
-
-    await expect(page.getByRole('heading', { name: /Automated Hardening Script/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Download Script/i })).toBeVisible();
+    await expect(page.getByText(/Recommendation for: Business · privileged admin/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Evidence and limits/i })).toBeVisible();
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: /Download decision summary/i }).click();
+    await expect((await download).suggestedFilename()).toMatch(/device-decision-\d+\.txt/);
   });
 
-  test('compare tab can run comparison request and render a stable outcome', async ({ page }) => {
-    await page.goto('/device/1');
-    await page.locator('#compare-tab').click();
+  test('government context is retained in review and alternatives', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('What is it for?').selectOption('Government');
+    await page.getByRole('button', { name: /Show recommendations/i }).click();
+    await page.locator('.device-card').first().getByRole('button', { name: /Review device/i }).click();
 
-    await page.getByRole('button', { name: /Find Alternatives/i }).click();
-
-    const noResults = page.getByText(/No comparable devices found/i);
-    const cards = page.locator('.comparison-card');
-
-    await expect
-      .poll(async () => {
-        const noResultsVisible = await noResults.count();
-        const cardCount = await cards.count();
-        return noResultsVisible > 0 || cardCount > 0;
-      })
-      .toBeTruthy();
+    await expect(page.getByText(/Recommendation for: Government/i)).toBeVisible();
+    await page.getByRole('button', { name: /Find alternatives/i }).click();
+    await expect(page.getByRole('heading', { name: /Similar choices/i })).toBeVisible();
   });
 
-  test('async refresh endpoint is not public without operator authorization', async ({ request }) => {
+  test('filters are reflected in the URL', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('What is it for?').selectOption('Work');
+    await page.getByLabel('Maximum price (£)').fill('1500');
+    await page.getByRole('button', { name: /Show recommendations/i }).click();
+    await expect(page).toHaveURL(/use_case=Work/);
+    await expect(page).toHaveURL(/price_max=1500/);
+  });
+
+  test('operator refresh remains unavailable to public users', async ({ request }) => {
     const res = await request.post('/async-refresh');
     expect(res.status()).toBe(503);
     const json = await res.json();
     expect(json.error).toBe('operator action is disabled');
   });
 
-  test('404 routes return safe custom UX page', async ({ page }) => {
-    const resp = await page.goto('/this-route-should-not-exist');
-    expect(resp && resp.status()).toBe(404);
-
-    await expect(page.getByRole('heading', { name: /404: Page Not Found/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Back To Home/i })).toBeVisible();
-  });
-
-  test('advanced operating system filter currently does not constrain results (intent gap)', async ({ page }) => {
+  test('invite-only pilot wording is visible in the application footer', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: /Find Your Device/i }).click();
-
-    await page.locator('#searchBar').fill('Mac');
-    await page.locator('#operating_system').selectOption('Windows');
-    await page.locator('#device_type').selectOption('Laptops');
-    await page.getByRole('button', { name: /Find Secure Devices/i }).click();
-
-    await expect(page.getByRole('heading', { name: /Security-Verified Search Results/i })).toBeVisible();
-
-    // If OS filtering was honored, a Mac query + Windows filter should typically be empty.
-    // Presence of a result here highlights a functionality gap relative to UI intent.
-    await expect(page.locator('.device-card-result').first()).toBeVisible();
+    await expect(page.locator('footer').getByText(/invite-only pilot/i)).toBeVisible();
+    await expect(page.getByText(/no public account or sign-up data/i)).toBeVisible();
   });
 });

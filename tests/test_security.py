@@ -77,15 +77,27 @@ class SecurityBoundaryTests(unittest.TestCase):
         self.assertGreaterEqual(status.json['product_count'], 1)
         self.assertFalse(status.json['live_scraping'])
 
+        source_status = client.get('/api/v1/sources/Curated%20local%20catalogue/status')
+        self.assertEqual(source_status.status_code, 200)
+        self.assertIn('status', source_status.json)
+
+        criteria = client.get('/api/v1/criteria')
+        self.assertEqual(criteria.status_code, 200)
+        self.assertIn('Government', [item['id'] for item in criteria.json['use_cases']])
+        self.assertIn('privileged_admin', [item['id'] for item in criteria.json['work_profiles']])
+
         search = client.post('/api/v1/search', json={'query': 'Mac', 'use_case': 'Work'})
         self.assertEqual(search.status_code, 200)
         self.assertTrue(all('security' in item for item in search.json['items']))
 
-        detail = client.get('/api/v1/devices/1')
+        detail = client.get('/api/v1/devices/1?use_case=Government')
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.json['api_version'], 'v1')
+        self.assertEqual(detail.json['item']['recommendation_context']['use_case'], 'Government')
+        self.assertEqual(detail.json['item']['security']['score_version'], 'v1-heuristic')
+        self.assertIn('limitations', detail.json['item']['security'])
 
-        comparisons = client.get('/api/v1/devices/1/comparisons')
+        comparisons = client.get('/api/v1/devices/1/comparisons?use_case=Government')
         self.assertEqual(comparisons.status_code, 200)
         self.assertIn('items', comparisons.json)
 
@@ -135,6 +147,7 @@ class SecurityBoundaryTests(unittest.TestCase):
             imported = client.get('/api/v1/devices').json['items'][0]
             self.assertEqual(imported['name'], 'Imported Laptop')
             self.assertEqual(imported['catalogue']['source'], 'Approved test feed')
+            self.assertIn('evidence_quality', imported['catalogue'])
         finally:
             app_module.app.config['DATABASE_PATH'] = original_database
             os.unlink(temp_database.name)

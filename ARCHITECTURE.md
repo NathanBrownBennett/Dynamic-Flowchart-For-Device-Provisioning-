@@ -30,20 +30,26 @@ The frontend only relies on these read-oriented endpoints:
 
 - `GET /api/v1/healthz` → `{status, service, api_version}`.
 - `GET /api/v1/catalogue/status` → product count plus source/freshness summaries.
+- `GET /api/v1/criteria` → bounded, data-backed categories, brands, operating
+  systems, use cases and business-role choices.
+- `GET /api/v1/sources/{source}/status` → coarse source freshness status only.
 - `GET /api/v1/devices` → `{items, page, page_size, total, live_scraping}`.
 - `POST /api/v1/search` → the same collection envelope; filters are bounded and
   validated server-side.
-- `GET /api/v1/devices/{id}` → `{item, api_version}` or a JSON 404.
-- `GET /api/v1/devices/{id}/comparisons` → `{items, total, api_version}`.
+- `GET /api/v1/devices/{id}?use_case=...&work_profile=...` → context-aware
+  `{item, api_version}` or a JSON 404.
+- `GET /api/v1/devices/{id}/comparisons?use_case=...&work_profile=...` →
+  context-aware `{items, total, api_version}`.
 - `POST /admin/catalogue/import` → protected operator-only feed ingestion;
   validates and atomically replaces the pilot catalogue.
 
 Device items retain the existing rule-engine shape, including security score,
 recommendations, operating-system inference and retailer links. The public
 contract does not expose operator tokens or mutation endpoints.
-Each item also exposes `catalogue.source`, `catalogue.retrieved_at`,
-`catalogue.price_checked_at` and `catalogue.availability`, so the UI can
-distinguish reviewed catalogue data from future live provider data.
+Each item also exposes catalogue source, retrieval, expiry, support, warranty,
+image-licence, evidence-quality and availability fields. Security responses
+expose the selected recommendation context, score version, evidence quality,
+score factors and limitations.
 
 Live retailer requests are a separate, disabled-by-default path. If explicitly
 enabled, bounded retailer requests populate in-process caches and are never a
@@ -68,6 +74,10 @@ single-instance pilot storage and the in-process caches are per-worker. A
 production boundary needs a managed database, shared cache, background worker,
 provider egress policy, structured logs, metrics, alerting, backups and a
 recovery test.
+
+The current pilot frontend is designed for a public static showcase plus an
+invite-only interactive service. It uses a guided domestic/business workflow
+and does not collect public account data or organisation inventory in v1.
 
 ## Public showcase boundary
 

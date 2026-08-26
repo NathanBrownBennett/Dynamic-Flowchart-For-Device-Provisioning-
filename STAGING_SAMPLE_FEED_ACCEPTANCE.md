@@ -1,6 +1,6 @@
 # Local staging and sample-feed acceptance
 
-Date of this record: 2026-08-19
+Date of this record: 2026-08-25
 
 This is a disposable local acceptance record. It does not approve hosting,
 DNS, provider access, credentials or publication.
@@ -28,11 +28,16 @@ DNS, provider access, credentials or publication.
 4. Confirm `/api/v1/catalogue/status` reports the imported source and one
    product, with `live_scraping=false`.
 5. Confirm `/api/v1/devices` exposes the catalogue source and retrieval fields.
-6. Stop and restart the local process against the same temporary database;
+6. Confirm `/api/v1/criteria` exposes the supported use cases and work roles,
+   and that a detail request with `use_case=Work&work_profile=privileged_admin`
+   retains that context and returns score evidence metadata.
+7. Confirm `/api/v1/sources/<source>/status` reports coarse freshness without
+   exposing provider credentials or fetching a remote URL.
+8. Stop and restart the local process against the same temporary database;
    confirm the imported catalogue remains available.
-7. Validate a malformed feed without importing it; confirm the last good
+9. Validate a malformed feed without importing it; confirm the last good
    catalogue remains unchanged.
-8. Confirm the root response serves the React bundle and `/api/v1/healthz`
+10. Confirm the root response serves the React bundle and `/api/v1/healthz`
    remains available from the same Flask process.
 
 ## Recorded result

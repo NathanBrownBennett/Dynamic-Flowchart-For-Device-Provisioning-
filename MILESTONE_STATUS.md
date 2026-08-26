@@ -1,6 +1,6 @@
 # Milestone status and founder handoff
 
-Date: 2026-08-20
+Date: 2026-08-25
 
 ## Completed locally
 
@@ -48,6 +48,18 @@ Date: 2026-08-20
   exceeded, so a separate device-provisioning project cannot be created there
   without an upgrade. The existing Buildy project is intentionally not being
   reused.
+- The current implementation pass adds context-aware Personal/Work/Government
+  detail and comparison responses, business-role choices, score-version and
+  evidence limitations, catalogue support/freshness/licence fields, and a
+  guided domestic/small-business React workflow.
+- Vite assets are explicitly served at `/assets/*` when the React bundle is
+  mounted at the Flask root, covering the hosted same-service deployment path.
+- The static showcase now provides a no-PII manual invite instruction without
+  adding public account creation.
+- The local React pilot has been visually refreshed to restore a stronger
+  product identity: branded navigation, clearer hero hierarchy, decision
+  snapshot, use-case cards, trust signals, responsive catalogue cards and a
+  cleaner review surface. API and security boundaries are unchanged.
 
 ## Render staging evidence (2026-08-20)
 
@@ -74,6 +86,14 @@ Date: 2026-08-20
 - `git diff --check`: passed.
 - Playwright Chromium end-to-end suite: 7 tests passed after the local
   Chromium prerequisite was installed.
+- The updated guided-flow browser suite: 7 tests passed, including domestic,
+  business-role and Government context retention, plus decision-summary
+  download coverage.
+- The disposable sample-feed API smoke path passed for health, React root,
+  criteria, catalogue status, source status and context-aware detail; reviewed
+  evidence metadata was returned as expected.
+- The refreshed frontend build passed visual browser verification locally;
+  the Playwright suite remains 7/7 after updating its heading/footer selectors.
 - Railway staging configuration review: prepared locally; founder-reported
   Free-plan status is not a deployment or health verification.
 - Docker and external browser deployment were not required for this milestone;

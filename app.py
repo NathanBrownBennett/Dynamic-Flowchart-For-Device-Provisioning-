@@ -37,6 +37,14 @@ form_submitted = False
 error_occurred = False
 devices = []
 RATE_LIMIT_STATE = {}
+SCORE_VERSION = 'v1-heuristic'
+USE_CASES = ('Personal', 'Work', 'Government')
+WORK_PROFILES = ('general_office', 'remote_worker', 'developer', 'privileged_admin', 'field_worker')
+USE_CASE_LABELS = {
+    'Personal': 'Domestic use',
+    'Work': 'Business use',
+    'Government': 'Government/public-sector use',
+}
 
 
 def _env_hosts(name, default=''):
@@ -540,8 +548,20 @@ def get_debloat_tools(os_name: str, device_name: str):
     return tools
 
 
-def apply_rule_engine(devices_list: list, use_case: str):
+def _normalise_use_case(value):
+    value = str(value or 'Personal').strip()
+    return value if value in USE_CASES else 'Personal'
+
+
+def _normalise_work_profile(value):
+    value = str(value or 'general_office').strip()
+    return value if value in WORK_PROFILES else 'general_office'
+
+
+def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'general_office'):
     """Filter/enrich devices based on use-case policies and compute security metadata."""
+    use_case = _normalise_use_case(use_case)
+    work_profile = _normalise_work_profile(work_profile)
     enriched = []
     for d in devices_list:
         # Normalize keys between DB devices and scraped devices
@@ -564,6 +584,13 @@ def apply_rule_engine(devices_list: list, use_case: str):
         score, level = compute_security_score(device, os, cpu_vendor, use_case)
         recs = hardening_recommendations(os, use_case)
 
+        if use_case == 'Work' and work_profile == 'privileged_admin':
+            recs['settings'].append('Use a separate privileged account and phishing-resistant MFA')
+        elif use_case == 'Work' and work_profile == 'field_worker':
+            recs['settings'].append('Use device tracking, remote lock and offline data protection')
+        elif use_case == 'Work' and work_profile == 'developer':
+            recs['settings'].append('Separate development credentials and review developer-tool permissions')
+
         # Policy gates
         allowed = True
         if use_case in ['Government', 'Public Sector']:
@@ -579,12 +606,30 @@ def apply_rule_engine(devices_list: list, use_case: str):
             'level': level,
             'findings': findings,
             'mitigations': mitigations,
-            'recommendations': recs
+            'recommendations': recs,
+            'score_version': SCORE_VERSION,
+            'evidence_quality': 'heuristic',
+            'score_factors': [
+                'Hardware capability',
+                'Inferred operating-system baseline',
+                'CPU risk adjustment',
+                'Selected use-case baseline',
+            ],
+            'limitations': [
+                'This is a comparison heuristic, not a certification.',
+                'It does not verify firmware, patch status, vendor support or local policy.',
+            ],
         }
         device['benchmark'] = compute_benchmark_metrics(device, score)
         device['debloat_tools'] = get_debloat_tools(os, device.get('name') or '')
         device['retailer_links'] = get_retailer_links(device['name'], device.get('category') or 'device')
         device['allowed'] = allowed
+        device['recommendation_context'] = {
+            'use_case': use_case,
+            'use_case_label': USE_CASE_LABELS[use_case],
+            'work_profile': work_profile if use_case == 'Work' else None,
+            'score_version': SCORE_VERSION,
+        }
         enriched.append(device)
     return enriched
 
@@ -641,25 +686,32 @@ def _catalogue_metadata_map(device_ids):
     placeholders = ','.join('?' for _ in device_ids)
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
     rows = conn.execute(
-        f'SELECT device_id, source, source_url, retrieved_at, price_checked_at, availability FROM device_catalogue_metadata WHERE device_id IN ({placeholders})',
+        f'''SELECT device_id, source, source_url, retrieved_at, price_checked_at,
+                   availability, expires_at, support_until, warranty,
+                   image_license, evidence_url, evidence_quality
+            FROM device_catalogue_metadata WHERE device_id IN ({placeholders})''',
         list(device_ids)
     ).fetchall()
     conn.close()
     return {
         row[0]: {
             'source': row[1], 'source_url': row[2], 'retrieved_at': row[3],
-            'price_checked_at': row[4], 'availability': row[5],
+            'price_checked_at': row[4], 'availability': row[5], 'expires_at': row[6],
+            'support_until': row[7], 'warranty': row[8], 'image_license': row[9],
+            'evidence_url': row[10], 'evidence_quality': row[11],
         } for row in rows
     }
 
 
-def _api_device(device_row, use_case='Personal', metadata=None):
+def _api_device(device_row, use_case='Personal', work_profile='general_office', metadata=None):
     """Return the stable public device representation used by the Vite app."""
-    item = apply_rule_engine(convert_to_dict([device_row]), use_case=use_case)[0]
+    item = apply_rule_engine(convert_to_dict([device_row]), use_case=use_case, work_profile=work_profile)[0]
     metadata = metadata if metadata is not None else _catalogue_metadata_map([device_row[0]]).get(device_row[0])
     item['catalogue'] = metadata or {
         'source': 'Curated local catalogue', 'source_url': None,
         'retrieved_at': None, 'price_checked_at': None, 'availability': 'unknown',
+        'expires_at': None, 'support_until': None, 'warranty': None,
+        'image_license': None, 'evidence_url': None, 'evidence_quality': 'unknown',
     }
     return item
 
@@ -684,7 +736,8 @@ def _api_filters(data):
         'category': str(data.get('category', '') or '').strip()[:40],
         'brand': str(data.get('brand', '') or '').strip()[:40],
         'operating_system': str(data.get('operating_system', '') or '').strip()[:40],
-        'use_case': str(data.get('use_case', 'Personal') or 'Personal')[:40],
+        'use_case': _normalise_use_case(data.get('use_case', 'Personal')),
+        'work_profile': _normalise_work_profile(data.get('work_profile', 'general_office')),
         'price_min': price_min, 'price_max': price_max, 'cpu_speed': cpu_speed,
         'ram': ram, 'storage': storage, 'screen_size': screen_size,
         'page': page, 'page_size': page_size,
@@ -715,7 +768,7 @@ def _api_catalogue(filters):
             continue
         if operating_system and operating_system not in infer_os_and_cpu(row[1] or '', row[2] or '')[0].lower():
             continue
-        matched.append(_api_device(row, filters['use_case'], metadata_map.get(row[0])))
+        matched.append(_api_device(row, filters['use_case'], filters['work_profile'], metadata_map.get(row[0])))
     start = (filters['page'] - 1) * filters['page_size']
     end = start + filters['page_size']
     return matched[start:end], len(matched)
@@ -744,6 +797,30 @@ def api_catalogue_status():
     })
 
 
+@app.route('/api/v1/sources/<path:source>/status', methods=['GET'])
+@public_rate_limited
+def api_source_status(source):
+    """Return coarse freshness status without exposing provider internals."""
+    source = str(source or '').strip()[:160]
+    if not source:
+        return jsonify({'error': 'source is required'}), 400
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    row = conn.execute('''SELECT MAX(retrieved_at), MAX(price_checked_at),
+                                MAX(expires_at), COUNT(*)
+                         FROM device_catalogue_metadata WHERE source = ?''', (source,)).fetchone()
+    conn.close()
+    if not row or not row[3]:
+        return jsonify({'source': source, 'status': 'unknown', 'product_count': 0, 'api_version': 'v1'}), 200
+    expires_at = row[2]
+    stale = bool(expires_at and expires_at < _utc_now())
+    return jsonify({
+        'api_version': 'v1', 'source': source,
+        'status': 'stale' if stale else 'available',
+        'product_count': row[3], 'retrieved_at': row[0],
+        'price_checked_at': row[1], 'expires_at': expires_at,
+    })
+
+
 @app.route('/api/v1/devices', methods=['GET'])
 @public_rate_limited
 def api_devices():
@@ -758,12 +835,14 @@ def api_devices():
 @app.route('/api/v1/devices/<int:device_id>', methods=['GET'])
 @public_rate_limited
 def api_device(device_id):
+    use_case = _normalise_use_case(request.args.get('use_case', 'Personal'))
+    work_profile = _normalise_work_profile(request.args.get('work_profile', 'general_office'))
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
     row = conn.execute('SELECT * FROM devices WHERE id = ?', (device_id,)).fetchone()
     conn.close()
     if not row:
         return jsonify({'error': 'device not found'}), 404
-    return jsonify({'item': _api_device(row, 'Work'), 'api_version': 'v1'})
+    return jsonify({'item': _api_device(row, use_case, work_profile), 'api_version': 'v1'})
 
 
 @app.route('/api/v1/search', methods=['POST'])
@@ -783,6 +862,8 @@ def api_comparisons(device_id):
     category = request.args.get('category', 'same')
     price_range = request.args.get('price_range', 'similar')
     performance = request.args.get('performance', 'similar')
+    use_case = _normalise_use_case(request.args.get('use_case', 'Personal'))
+    work_profile = _normalise_work_profile(request.args.get('work_profile', 'general_office'))
     if category not in {'same', 'all'} or price_range not in {'similar', 'lower', 'higher', 'all'} or performance not in {'similar', 'higher', 'all'}:
         return jsonify({'error': 'comparison filter is invalid'}), 400
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
@@ -813,7 +894,35 @@ def api_comparisons(device_id):
     rows = conn.execute(query + ' LIMIT 6', params).fetchall()
     conn.close()
     metadata_map = _catalogue_metadata_map([row[0] for row in rows])
-    return jsonify({'items': [_api_device(row, 'Work', metadata_map.get(row[0])) for row in rows], 'total': len(rows), 'api_version': 'v1'})
+    return jsonify({'items': [_api_device(row, use_case, work_profile, metadata_map.get(row[0])) for row in rows], 'total': len(rows), 'api_version': 'v1'})
+
+
+@app.route('/api/v1/criteria', methods=['GET'])
+@public_rate_limited
+def api_criteria():
+    """Return bounded, data-backed choices for the guided frontend."""
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    categories = [row[0] for row in conn.execute(
+        'SELECT DISTINCT category FROM devices WHERE category IS NOT NULL ORDER BY category'
+    ).fetchall()]
+    known_brands = ('Acer', 'Apple', 'ASUS', 'Dell', 'Google', 'HP', 'Lenovo', 'Microsoft', 'Samsung')
+    names = [str(row[0] or '').lower() for row in conn.execute('SELECT name FROM devices').fetchall()]
+    brands = [brand for brand in known_brands if any(brand.lower() in name for name in names)]
+    conn.close()
+    return jsonify({
+        'api_version': 'v1',
+        'use_cases': [{'id': key, 'label': USE_CASE_LABELS[key]} for key in USE_CASES],
+        'work_profiles': [
+            {'id': 'general_office', 'label': 'General office'},
+            {'id': 'remote_worker', 'label': 'Remote worker'},
+            {'id': 'developer', 'label': 'Developer or technical user'},
+            {'id': 'privileged_admin', 'label': 'Privileged administrator'},
+            {'id': 'field_worker', 'label': 'Field or mobile worker'},
+        ],
+        'categories': categories,
+        'operating_systems': ['Windows 11', 'macOS', 'ChromeOS', 'Android', 'iPadOS', 'Linux'],
+        'brands': brands[:40],
+    })
 
 
 def serve_frontend(filename='index.html'):
@@ -833,6 +942,16 @@ def serve_frontend(filename='index.html'):
 @app.route('/app/<path:filename>')
 def frontend_app(filename):
     return serve_frontend(filename)
+
+
+@app.route('/assets/<path:filename>')
+def frontend_assets(filename):
+    """Expose Vite's immutable assets when the bundle is mounted at root."""
+    dist = app.config['FRONTEND_DIST']
+    asset_path = os.path.join(dist, 'assets', filename)
+    if not os.path.isfile(asset_path):
+        abort(404)
+    return send_from_directory(os.path.join(dist, 'assets'), filename)
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -1163,12 +1282,17 @@ def replace_catalogue(products, feed_source='Curated local catalogue', feed_sour
                 (product['name'], product['category'], product['cpu_speed'],
                  product['ram'], product['storage'], product['screen_size'], product['price']))
             cursor.execute('''INSERT INTO device_catalogue_metadata
-                (device_id, source, source_url, retrieved_at, price_checked_at, availability)
-                VALUES (?, ?, ?, ?, ?, ?)''',
+                (device_id, source, source_url, retrieved_at, price_checked_at,
+                 availability, expires_at, support_until, warranty, image_license,
+                 evidence_url, evidence_quality)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (cursor.lastrowid, str(product.get('source') or feed_source)[:160],
                  product.get('source_url') or feed_source_url, retrieved_at,
                  product.get('price_checked_at') or retrieved_at,
-                 str(product.get('availability') or 'unknown')[:40]))
+                 str(product.get('availability') or 'unknown')[:40],
+                 product.get('expires_at'), product.get('support_until'),
+                 product.get('warranty'), product.get('image_license'),
+                 product.get('evidence_url'), product.get('evidence_quality', 'reviewed')))
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1210,9 +1334,25 @@ def validate_catalogue_feed(payload):
                 'source': source,
                 'source_url': source_url,
                 'price_checked_at': product.get('price_checked_at') or retrieved_at,
+                'expires_at': product.get('expires_at'),
+                'support_until': product.get('support_until'),
+                'warranty': str(product.get('warranty') or '')[:160] or None,
+                'image_license': str(product.get('image_license') or '')[:160] or None,
+                'evidence_url': product.get('evidence_url'),
+                'evidence_quality': str(product.get('evidence_quality') or 'reviewed')[:40],
             }
         except (KeyError, TypeError, ValueError):
             raise ValueError(f'product {index + 1} has invalid fields')
+        for date_field in ('price_checked_at', 'expires_at', 'support_until'):
+            if item[date_field] is not None and (not isinstance(item[date_field], str) or len(item[date_field]) > 80):
+                raise ValueError(f'product {index + 1} has invalid {date_field}')
+        for url_field in ('source_url', 'evidence_url'):
+            if item[url_field]:
+                parsed_url = urlparse(str(item[url_field]))
+                if parsed_url.scheme != 'https' or not parsed_url.hostname or parsed_url.username or parsed_url.password:
+                    raise ValueError(f'product {index + 1} has invalid {url_field}')
+        if item['evidence_quality'] not in {'reviewed', 'vendor', 'independent', 'unknown'}:
+            raise ValueError(f'product {index + 1} has invalid evidence_quality')
         if not item['name'] or not item['category'] or item['price'] < 0 or item['cpu_speed'] < 0 or item['ram'] < 0 or item['storage'] < 0 or item['screen_size'] < 0:
             raise ValueError(f'product {index + 1} has invalid values')
         normalised.append(item)
@@ -1247,7 +1387,17 @@ def ensure_database_schema():
     cursor.execute('''CREATE TABLE IF NOT EXISTS device_catalogue_metadata
         (device_id INTEGER PRIMARY KEY, source TEXT NOT NULL, source_url TEXT,
          retrieved_at TEXT NOT NULL, price_checked_at TEXT, availability TEXT NOT NULL,
+         expires_at TEXT, support_until TEXT, warranty TEXT, image_license TEXT,
+         evidence_url TEXT, evidence_quality TEXT NOT NULL DEFAULT 'unknown',
          FOREIGN KEY(device_id) REFERENCES devices(id))''')
+    existing_columns = {row[1] for row in cursor.execute('PRAGMA table_info(device_catalogue_metadata)').fetchall()}
+    for column, definition in (
+        ('expires_at', 'TEXT'), ('support_until', 'TEXT'), ('warranty', 'TEXT'),
+        ('image_license', 'TEXT'), ('evidence_url', 'TEXT'),
+        ('evidence_quality', "TEXT NOT NULL DEFAULT 'unknown'"),
+    ):
+        if column not in existing_columns:
+            cursor.execute(f'ALTER TABLE device_catalogue_metadata ADD COLUMN {column} {definition}')
     if not cursor.execute('SELECT 1 FROM PersonalUseSoftware LIMIT 1').fetchone():
         cursor.executemany('INSERT INTO PersonalUseSoftware (Software) VALUES (?)',
                            [(name,) for name in ('Norton 360', 'Bitdefender Total Security', 'Avast Free')])

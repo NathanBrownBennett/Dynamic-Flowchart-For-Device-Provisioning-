@@ -12,7 +12,13 @@
       "screen_size": 14,
       "price": 899,
       "availability": "in_stock",
-      "price_checked_at": "2026-08-19T00:00:00+00:00"
+      "price_checked_at": "2026-08-19T00:00:00+00:00",
+      "expires_at": "2026-09-19T00:00:00+00:00",
+      "support_until": "2030-10-01",
+      "warranty": "Example two-year manufacturer warranty",
+      "image_license": "Approved provider image licence",
+      "evidence_url": "https://feed-provider.example/catalogue/example-business-laptop-14",
+      "evidence_quality": "reviewed"
     }
   ]
 }
