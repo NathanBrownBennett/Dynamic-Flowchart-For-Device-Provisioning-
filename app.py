@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify, send_file, send_from
 import os
 import sqlite3
 import html
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 try:
     import graphviz
 except ImportError:  # Graphviz is optional; the SVG fallback keeps WSGI hosting viable.
@@ -18,26 +18,41 @@ import hmac
 import ipaddress
 import socket
 from urllib.parse import urlparse
+from integrations.providers import provider_descriptors
+from integrations.worker import run_provider
 
 app = Flask(__name__)
+
+
+def _env_bool(name, default=False):
+    return os.environ.get(name, str(default).lower()).lower() in ('1', 'true', 'yes', 'on')
+
+
 app.config.update(
     # Keep mutable operational actions disabled until an operator explicitly
     # provisions a secret in the hosting environment.
     ADMIN_TOKEN=os.environ.get('PROVISIONING_ADMIN_TOKEN', ''),
-    ENABLE_LIVE_SCRAPING=os.environ.get('ENABLE_LIVE_SCRAPING', 'false').lower() in ('1', 'true', 'yes', 'on'),
+    ENABLE_LIVE_SCRAPING=_env_bool('ENABLE_LIVE_SCRAPING'),
+    # Sample data is a local test/preview fixture only. It is never enabled by
+    # the production default and cannot be reached through a public route.
+    ALLOW_SAMPLE_DATA=_env_bool('ALLOW_SAMPLE_DATA'),
+    LIVE_DATA_REQUIRED=_env_bool('LIVE_DATA_REQUIRED'),
+    PROVIDER_SYNC_ENABLED=_env_bool('PROVIDER_SYNC_ENABLED'),
+    CATALOGUE_TTL_HOURS=int(os.environ.get('CATALOGUE_TTL_HOURS', '168')),
+    OFFER_TTL_HOURS=int(os.environ.get('OFFER_TTL_HOURS', '48')),
     DATABASE_PATH=os.environ.get('DATABASE_PATH', os.path.join(app.root_path, 'devices.db')),
     IMAGE_PROXY_MAX_BYTES=int(os.environ.get('IMAGE_PROXY_MAX_BYTES', '5242880')),
     PUBLIC_RATE_LIMIT=int(os.environ.get('PUBLIC_RATE_LIMIT', '30')),
     PUBLIC_RATE_WINDOW=int(os.environ.get('PUBLIC_RATE_WINDOW', '60')),
     FRONTEND_DIST=os.environ.get('FRONTEND_DIST', os.path.join(app.root_path, 'frontend', 'dist')),
-    SERVE_FRONTEND_AT_ROOT=os.environ.get('SERVE_FRONTEND_AT_ROOT', 'false').lower() in ('1', 'true', 'yes', 'on'),
+    SERVE_FRONTEND_AT_ROOT=_env_bool('SERVE_FRONTEND_AT_ROOT', True),
     MAX_CONTENT_LENGTH=int(os.environ.get('MAX_CONTENT_LENGTH', '32768')),
 )
 form_submitted = False
 error_occurred = False
 devices = []
 RATE_LIMIT_STATE = {}
-SCORE_VERSION = 'v1-heuristic'
+SCORE_VERSION = 'v2-transparent-heuristic'
 USE_CASES = ('Personal', 'Work', 'Government')
 WORK_PROFILES = ('general_office', 'remote_worker', 'developer', 'privileged_admin', 'field_worker')
 USE_CASE_LABELS = {
@@ -123,6 +138,12 @@ def add_security_headers(response):
     response.headers.setdefault('X-Frame-Options', 'DENY')
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    response.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; "
+        "form-action 'self'; object-src 'none'; img-src 'self' https: data:; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self';"
+    )
     if request.is_secure:
         response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
     return response
@@ -130,8 +151,32 @@ def add_security_headers(response):
 
 @app.route('/healthz')
 def healthz():
-    """Cheap liveness/readiness probe with no database mutation."""
+    """Cheap liveness probe. Use /readyz for data readiness."""
     return jsonify({'status': 'ok', 'service': 'device-provisioning-toolkit'}), 200
+
+
+def _database_readiness():
+    """Return non-sensitive database/catalogue readiness information."""
+    try:
+        conn = sqlite3.connect(app.config['DATABASE_PATH'])
+        product_count = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
+        offer_count = conn.execute('SELECT COUNT(*) FROM device_offers').fetchone()[0]
+        conn.close()
+        catalogue_state = _catalogue_state(product_count=product_count, offer_count=offer_count)
+        ready = catalogue_state not in {'empty', 'unavailable'} or not app.config['LIVE_DATA_REQUIRED']
+        if app.config['LIVE_DATA_REQUIRED'] and catalogue_state != 'current':
+            ready = False
+        return {'ready': ready, 'catalogue_state': catalogue_state,
+                'product_count': product_count, 'offer_count': offer_count}
+    except (OSError, sqlite3.Error) as exc:
+        return {'ready': False, 'catalogue_state': 'unavailable',
+                'error': type(exc).__name__}
+
+
+@app.route('/readyz')
+def readyz():
+    status = _database_readiness()
+    return jsonify({'service': 'device-provisioning-toolkit', **status}), 200 if status['ready'] else 503
 
 
 @app.route('/favicon.ico')
@@ -219,33 +264,16 @@ def cache_search_results(cache_key, results):
     print(f"[CACHE] Cached {len(results)} results for: {cache_key.split('|')[0]}")
 
 def get_cached_live_listings():
-    """Return cached live listings or refresh if TTL expired."""
+    """Return cached provider results only; never scrape a retailer request path."""
     now = time.time()
     if LIVE_LISTINGS_CACHE['data'] and now - LIVE_LISTINGS_CACHE['ts'] < LIVE_CACHE_TTL:
         return LIVE_LISTINGS_CACHE['data']
-    try:
-        live = device_scraper.get_real_device_data()[:8]
-        mapped = [{
-            'id': None,
-            'name': x.get('name'),
-            'category': x.get('category'),
-            'cpu_speed': x.get('cpu_speed', 0),
-            'ram': x.get('ram', 0),
-            'storage': x.get('storage', 0),
-            'screen_size': x.get('screen_size', 0),
-            'price': x.get('price', 0),
-            'image_url': x.get('image_url'),
-            'source': x.get('source')
-        } for x in live]
-        enriched = apply_rule_engine(mapped, use_case='Work')
-        for item in enriched:
-            item['retailer_links'] = get_retailer_links(item['name'], item['category'] or 'device')
-        LIVE_LISTINGS_CACHE['data'] = enriched
-        LIVE_LISTINGS_CACHE['ts'] = now
-        return enriched
-    except Exception as e:
-        print(f"Error fetching live listings (cache): {e}")
-        return []
+    # The legacy scraper remains importable for local maintenance, but is not
+    # an approved production data source. Provider workers populate the normal
+    # catalogue tables after terms, credentials and rate limits are approved.
+    LIVE_LISTINGS_CACHE['data'] = []
+    LIVE_LISTINGS_CACHE['ts'] = now
+    return []
 
 def ensure_db_indexes():
     try:
@@ -337,12 +365,35 @@ def detect_known_vulnerabilities(os: str, cpu_vendor: str, device_name: str):
     return findings, mitigations
 
 
+def _rating_label(score):
+    if score >= 85:
+        return 'Excellent'
+    if score >= 70:
+        return 'Good'
+    if score >= 55:
+        return 'Adequate'
+    return 'Needs attention'
+
+
 def compute_security_score(device: dict, os: str, cpu_vendor: str, use_case: str):
-    # Base from hardware capability
-    score = 50
-    score += min(max((device.get('cpu_speed', 0) - 2.5) * 10, 0), 25)  # up to +25
-    score += 5 if device.get('ram', 0) >= 16 else (2 if device.get('ram', 0) >= 8 else 0)
-    score += 5 if device.get('storage', 0) >= 512 else 0
+    """Return a transparent security score and the factors that produced it."""
+    factors = []
+    base_points = 50
+    score = base_points
+    factors.append({'id': 'baseline', 'label': 'Starting baseline', 'points': base_points,
+                    'explanation': 'Neutral starting point before device-specific evidence.'})
+    cpu_points = int(round(min(max((device.get('cpu_speed', 0) - 2.5) * 10, 0), 25)))
+    score += cpu_points
+    factors.append({'id': 'cpu', 'label': 'CPU capability', 'points': cpu_points,
+                    'explanation': 'Higher headroom helps updates, security tooling and sustained workloads.'})
+    ram_points = 5 if device.get('ram', 0) >= 16 else (2 if device.get('ram', 0) >= 8 else 0)
+    score += ram_points
+    factors.append({'id': 'memory', 'label': 'Memory headroom', 'points': ram_points,
+                    'explanation': 'More memory leaves room for browsers, updates and endpoint protection.'})
+    storage_points = 5 if device.get('storage', 0) >= 512 else 0
+    score += storage_points
+    factors.append({'id': 'storage', 'label': 'Storage headroom', 'points': storage_points,
+                    'explanation': 'Adequate free space makes updates, recovery and backups easier.'})
 
     # OS baseline security
     os_weight = {
@@ -352,21 +403,32 @@ def compute_security_score(device: dict, os: str, cpu_vendor: str, use_case: str
         'iPadOS': 10,
         'Android': 6
     }
-    score += os_weight.get(os, 8)
+    os_points = os_weight.get(os, 8)
+    score += os_points
+    factors.append({'id': 'os', 'label': 'Operating-system baseline', 'points': os_points,
+                    'explanation': f'{os} security controls are inferred from the product name and category.'})
 
     # CPU vendor risk adjustments
     if cpu_vendor in ['Intel', 'AMD']:
         score -= 5  # speculative class mitigations overhead and residual risk
+        factors.append({'id': 'cpu_risk', 'label': 'CPU risk adjustment', 'points': -5,
+                        'explanation': 'Residual speculative-execution risk requires current firmware and OS mitigations.'})
     elif cpu_vendor == 'Apple Silicon':
         score += 3
+        factors.append({'id': 'cpu_risk', 'label': 'CPU risk adjustment', 'points': 3,
+                        'explanation': 'Apple Silicon receives a small baseline uplift in this heuristic.'})
 
     # Use-case requirements tighten score caps
     if use_case in ['Government', 'Public Sector']:
         if device.get('ram', 0) < 16 or device.get('cpu_speed', 0) < 3.0:
             score -= 8
+            factors.append({'id': 'use_case', 'label': 'Public-sector baseline', 'points': -8,
+                            'explanation': 'The selected public-sector context expects at least 16 GB RAM and 3.0 GHz CPU.'})
     elif use_case in ['Work', 'Business', 'Enterprise']:
         if device.get('ram', 0) < 8:
             score -= 5
+            factors.append({'id': 'use_case', 'label': 'Business baseline', 'points': -5,
+                            'explanation': 'The selected business context penalises devices below the 8 GB RAM baseline.'})
 
     # Clamp
     score = max(0, min(100, int(round(score))))
@@ -381,7 +443,49 @@ def compute_security_score(device: dict, os: str, cpu_vendor: str, use_case: str
     else:
         level = 'Risky'
 
-    return score, level
+    hardware_score = max(0, min(100, int(round(
+        min((device.get('cpu_speed', 0) / 5.0) * 100, 100) * 0.5 +
+        min((device.get('ram', 0) / 32.0) * 100, 100) * 0.25 +
+        min((device.get('storage', 0) / 1000.0) * 100, 100) * 0.25
+    ))))
+    os_score = {'Windows 11': 82, 'macOS': 90, 'ChromeOS': 86,
+                'iPadOS': 87, 'Android': 70, 'Linux': 78}.get(os, 65)
+    return score, level, {
+        'factors': factors,
+        'hardware_rating': hardware_score,
+        'hardware_label': _rating_label(hardware_score),
+        'os_rating': os_score,
+        'os_label': _rating_label(os_score),
+    }
+
+
+def experience_comment(device: dict, os: str, benchmark: dict):
+    """Translate the normalized metrics into a useful, non-laboratory comment."""
+    ram = int(device.get('ram') or 0)
+    storage = int(device.get('storage') or 0)
+    cpu = float(device.get('cpu_speed') or 0)
+    if benchmark['overall_index'] >= 80:
+        summary = 'Should feel responsive for demanding everyday work, multitasking and security tools.'
+    elif benchmark['overall_index'] >= 60:
+        summary = 'A balanced everyday experience for browsing, documents, calls and normal productivity.'
+    else:
+        summary = 'Best for lighter workloads; heavier multitasking may feel slower.'
+    strengths = []
+    tradeoffs = []
+    if ram >= 16:
+        strengths.append('Good memory headroom for multitasking')
+    else:
+        tradeoffs.append('8 GB or less may limit heavier multitasking')
+    if storage >= 512:
+        strengths.append('Comfortable storage for apps and updates')
+    else:
+        tradeoffs.append('Plan storage management and backups')
+    if cpu >= 4:
+        strengths.append('Strong CPU headroom')
+    else:
+        tradeoffs.append('CPU headroom is suited to normal rather than sustained heavy workloads')
+    return {'summary': summary, 'strengths': strengths, 'tradeoffs': tradeoffs,
+            'os_context': f'Experience comments assume a current, supported {os} installation.'}
 
 
 def hardening_recommendations(os: str, use_case: str):
@@ -577,11 +681,16 @@ def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'ge
             'screen_size': d.get('screen_size', 0),
             'price': d.get('price', 0),
             'image': get_device_image_url(d.get('name') or '', scraped_image_url),  # Use scraped URL if available
-            'source': d.get('source')
+            'source': d.get('source'),
+            'brand': d.get('brand'), 'model': d.get('model'), 'variant': d.get('variant'),
+            'mpn': d.get('mpn'), 'gtin': d.get('gtin'), 'sku': d.get('sku'),
+            'region': d.get('region'), 'release_date': d.get('release_date'),
+            'operating_system': d.get('operating_system'), 'source_state': d.get('source_state'),
         }
-        os, cpu_vendor = infer_os_and_cpu(device['name'] or '', device.get('category') or '')
+        inferred_os, cpu_vendor = infer_os_and_cpu(device['name'] or '', device.get('category') or '')
+        os = device.get('operating_system') or inferred_os
         findings, mitigations = detect_known_vulnerabilities(os, cpu_vendor, device['name'] or '')
-        score, level = compute_security_score(device, os, cpu_vendor, use_case)
+        score, level, score_details = compute_security_score(device, os, cpu_vendor, use_case)
         recs = hardening_recommendations(os, use_case)
 
         if use_case == 'Work' and work_profile == 'privileged_admin':
@@ -609,18 +718,25 @@ def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'ge
             'recommendations': recs,
             'score_version': SCORE_VERSION,
             'evidence_quality': 'heuristic',
-            'score_factors': [
-                'Hardware capability',
-                'Inferred operating-system baseline',
-                'CPU risk adjustment',
-                'Selected use-case baseline',
-            ],
+            'score_factors': score_details['factors'],
+            'hardware_rating': score_details['hardware_rating'],
+            'hardware_label': score_details['hardware_label'],
+            'os_rating': score_details['os_rating'],
+            'os_label': score_details['os_label'],
             'limitations': [
                 'This is a comparison heuristic, not a certification.',
                 'It does not verify firmware, patch status, vendor support or local policy.',
             ],
         }
         device['benchmark'] = compute_benchmark_metrics(device, score)
+        device['experience'] = experience_comment(device, os, device['benchmark'])
+        device['ratings'] = {
+            'security': {'score': score, 'label': level},
+            'performance': {'score': device['benchmark']['overall_index'],
+                            'label': _rating_label(device['benchmark']['overall_index'])},
+            'operating_system': {'score': score_details['os_rating'], 'label': score_details['os_label']},
+            'hardware': {'score': score_details['hardware_rating'], 'label': score_details['hardware_label']},
+        }
         device['debloat_tools'] = get_debloat_tools(os, device.get('name') or '')
         device['retailer_links'] = get_retailer_links(device['name'], device.get('category') or 'device')
         device['allowed'] = allowed
@@ -662,22 +778,80 @@ def convert_to_dict(devices):
             'storage': device[5],
             'screen_size': device[6],
             'price': device[7],
-            'image': get_device_image_url(device[1])  # Get real device image
+            'image': get_device_image_url(device[1], device[18] if len(device) > 18 else None),
         }
+        optional = ('brand', 'model', 'variant', 'mpn', 'gtin', 'sku', 'region',
+                    'release_date', 'operating_system', 'source_state', 'image_url')
+        for offset, key in enumerate(optional, start=8):
+            if len(device) > offset:
+                device_dict[key] = device[offset]
         device_list.append(device_dict)
     return device_list
 
 @app.route("/resources")
 def resources():
-    # Example response with links to educational content
     return jsonify({
-        "cybersecurity": "https://www.example.com/cybersecurity-basics",
-        "device_security": "https://www.example.com/device-security-best-practices"
+        "cybersecurity": "https://www.ncsc.gov.uk/collection/device-security",
+        "device_security": "https://www.ncsc.gov.uk/collection/small-business-guide",
+        "vulnerability_data": "https://nvd.nist.gov/developers/vulnerabilities",
+        "price_guidance": "https://www.gov.uk/government/publications/price-transparency-cma209"
     })
 
 
 def _utc_now():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _is_expired(value):
+    if not value:
+        return False
+    try:
+        parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed <= datetime.now(timezone.utc)
+    except ValueError:
+        return True
+
+
+def _derived_identity(name, category='device'):
+    """Only used for the explicitly opt-in local fixture catalogue."""
+    words = str(name or '').split()
+    brand = words[0] if words else 'Unknown'
+    return {'brand': brand[:80], 'model': str(name or category)[:120],
+            'variant': None, 'mpn': None, 'gtin': None, 'sku': None,
+            'region': 'GB', 'identity_quality': 'derived_fixture'}
+
+
+def _catalogue_state(product_count=None, offer_count=None):
+    if product_count is None or offer_count is None:
+        conn = sqlite3.connect(app.config['DATABASE_PATH'])
+        product_count = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
+        offer_count = conn.execute('SELECT COUNT(*) FROM device_offers').fetchone()[0]
+        conn.close()
+    if not product_count:
+        return 'empty'
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    sample_count = conn.execute(
+        "SELECT COUNT(*) FROM device_catalogue_metadata WHERE source_state = 'sample'"
+    ).fetchone()[0]
+    current_products = conn.execute(
+        "SELECT COUNT(*) FROM device_catalogue_metadata WHERE source_state IN ('verified', 'reviewed') "
+        "AND (expires_at IS NULL OR expires_at > ?)", (_utc_now(),)
+    ).fetchone()[0]
+    current_offers = conn.execute(
+        "SELECT COUNT(*) FROM device_offers WHERE expires_at IS NULL OR expires_at > ?", (_utc_now(),)
+    ).fetchone()[0]
+    conn.close()
+    if app.config['ALLOW_SAMPLE_DATA'] and sample_count >= product_count:
+        return 'sample'
+    if not app.config['ALLOW_SAMPLE_DATA'] and sample_count >= product_count and not current_products:
+        return 'unavailable'
+    if current_products and current_offers:
+        return 'current'
+    if current_products:
+        return 'partial'
+    return 'stale'
 
 
 def _catalogue_metadata_map(device_ids):
@@ -688,7 +862,8 @@ def _catalogue_metadata_map(device_ids):
     rows = conn.execute(
         f'''SELECT device_id, source, source_url, retrieved_at, price_checked_at,
                    availability, expires_at, support_until, warranty,
-                   image_license, evidence_url, evidence_quality
+                   image_license, evidence_url, evidence_quality, source_state,
+                   source_license, confidence, freshness_hours
             FROM device_catalogue_metadata WHERE device_id IN ({placeholders})''',
         list(device_ids)
     ).fetchall()
@@ -699,20 +874,130 @@ def _catalogue_metadata_map(device_ids):
             'price_checked_at': row[4], 'availability': row[5], 'expires_at': row[6],
             'support_until': row[7], 'warranty': row[8], 'image_license': row[9],
             'evidence_url': row[10], 'evidence_quality': row[11],
+            'source_state': row[12], 'source_license': row[13],
+            'confidence': row[14], 'freshness_hours': row[15],
         } for row in rows
     }
 
 
-def _api_device(device_row, use_case='Personal', work_profile='general_office', metadata=None):
+def _vendor_offers_map(device_ids):
+    """Return current provider offers sorted by total cost, unknown last."""
+    if not device_ids:
+        return {}
+    placeholders = ','.join('?' for _ in device_ids)
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    rows = conn.execute(
+        f'''SELECT device_id, provider, vendor, seller, url, affiliate_url,
+                   product_identifier, condition, price, item_price, delivery_price,
+                   total_price, currency, availability, stock_message,
+                   checked_at, expires_at, source_url, source_license,
+                   is_affiliate, is_sponsored
+            FROM device_offers WHERE device_id IN ({placeholders})''', list(device_ids)
+    ).fetchall()
+    conn.close()
+    offers = {}
+    for row in rows:
+        if _is_expired(row[16]):
+            continue
+        total_price = row[11] if row[11] is not None else row[8]
+        offers.setdefault(row[0], []).append({
+            'provider': row[1], 'vendor': row[2], 'seller': row[3], 'url': row[4],
+            'affiliate_url': row[5], 'product_identifier': row[6], 'condition': row[7],
+            'price': row[8], 'item_price': row[9], 'delivery_price': row[10],
+            'total_price': total_price, 'total_price_complete': row[11] is not None,
+            'currency': row[12], 'availability': row[13], 'stock_message': row[14],
+            'checked_at': row[15], 'expires_at': row[16], 'source_url': row[17],
+            'source_license': row[18], 'is_affiliate': bool(row[19]),
+            'is_sponsored': bool(row[20]),
+        })
+    for device_id in offers:
+        offers[device_id].sort(key=lambda offer: (
+            offer['total_price'] is None,
+            offer['total_price'] if offer['total_price'] is not None else float('inf'),
+            offer['vendor'].lower()
+        ))
+    return offers
+
+
+def _evidence_map(table, device_ids):
+    if not device_ids:
+        return {}
+    placeholders = ','.join('?' for _ in device_ids)
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    if table == 'benchmark_results':
+        rows = conn.execute(
+            f'''SELECT suite, version, workload, score, evidence_type, source_url,
+                       licence, tested_at, confidence, notes, device_id
+                FROM benchmark_results WHERE device_id IN ({placeholders}) ORDER BY tested_at DESC''',
+            list(device_ids)
+        ).fetchall()
+        values = ({'suite': r[0], 'version': r[1], 'workload': r[2], 'score': r[3],
+                   'evidence_type': r[4], 'source_url': r[5], 'licence': r[6],
+                   'tested_at': r[7], 'confidence': r[8], 'notes': r[9]} for r in rows)
+    elif table == 'security_evidence':
+        rows = conn.execute(
+            f'''SELECT provider, cve_id, cpe, kev_status, affected_version,
+                       fixed_version, source_url, checked_at, evidence_type,
+                       confidence, summary, device_id
+                FROM security_evidence WHERE device_id IN ({placeholders}) ORDER BY checked_at DESC''',
+            list(device_ids)
+        ).fetchall()
+        values = ({'provider': r[0], 'cve_id': r[1], 'cpe': r[2], 'kev_status': r[3],
+                   'affected_version': r[4], 'fixed_version': r[5], 'source_url': r[6],
+                   'checked_at': r[7], 'evidence_type': r[8], 'confidence': r[9],
+                   'summary': r[10]} for r in rows)
+    else:
+        conn.close()
+        return {}
+    result = {}
+    for row, value in zip(rows, values):
+        result.setdefault(row[-1], []).append(value)
+    conn.close()
+    return result
+
+
+def _support_map(device_ids):
+    if not device_ids:
+        return {}
+    placeholders = ','.join('?' for _ in device_ids)
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    rows = conn.execute(
+        f'''SELECT operating_system, support_until, patch_cadence, source_url,
+                   checked_at, confidence, device_id
+            FROM support_lifecycle WHERE device_id IN ({placeholders})''', list(device_ids)
+    ).fetchall()
+    conn.close()
+    return {row[-1]: {'operating_system': row[0], 'support_until': row[1],
+                      'patch_cadence': row[2], 'source_url': row[3],
+                      'checked_at': row[4], 'confidence': row[5]} for row in rows}
+
+
+def _api_device(device_row, use_case='Personal', work_profile='general_office', metadata=None, offers=None):
     """Return the stable public device representation used by the Vite app."""
     item = apply_rule_engine(convert_to_dict([device_row]), use_case=use_case, work_profile=work_profile)[0]
     metadata = metadata if metadata is not None else _catalogue_metadata_map([device_row[0]]).get(device_row[0])
     item['catalogue'] = metadata or {
-        'source': 'Curated local catalogue', 'source_url': None,
+        'source': None, 'source_url': None,
         'retrieved_at': None, 'price_checked_at': None, 'availability': 'unknown',
         'expires_at': None, 'support_until': None, 'warranty': None,
         'image_license': None, 'evidence_url': None, 'evidence_quality': 'unknown',
+        'source_state': 'unavailable', 'confidence': 'unknown',
     }
+    item['offers'] = offers if offers is not None else (_vendor_offers_map([device_row[0]]).get(device_row[0], []) if device_row[0] else [])
+    item['vendor_links'] = [
+        {'vendor': vendor, 'url': url, 'price': None, 'availability': 'price not supplied'}
+        for vendor, url in item['retailer_links'].items()
+    ]
+    item['data_quality'] = {
+        'catalogue_state': item['catalogue'].get('source_state') or 'unknown',
+        'confidence': item['catalogue'].get('confidence') or 'unknown',
+        'price_state': 'verified' if item['offers'] else 'unavailable',
+        'benchmark_state': 'heuristic_estimate',
+        'security_state': 'heuristic_rules',
+    }
+    item['benchmark_evidence'] = _evidence_map('benchmark_results', [device_row[0]]).get(device_row[0], [])
+    item['security_evidence'] = _evidence_map('security_evidence', [device_row[0]]).get(device_row[0], [])
+    item['support_lifecycle'] = _support_map([device_row[0]]).get(device_row[0])
     return item
 
 
@@ -754,21 +1039,33 @@ def _api_catalogue(filters):
     operating_system = filters['operating_system'].lower()
     matched = []
     metadata_map = _catalogue_metadata_map([row[0] for row in rows])
+    offers_map = _vendor_offers_map([row[0] for row in rows])
     for row in rows:
+        metadata = metadata_map.get(row[0]) or {}
+        if not app.config['ALLOW_SAMPLE_DATA'] and metadata.get('source_state') == 'sample':
+            continue
         name, row_category = (row[1] or '').lower(), (row[2] or '').lower()
+        row_brand = (row[8] if len(row) > 8 else '') or (row[1] or '').split(' ', 1)[0]
         if query and query not in name:
             continue
         if category and category not in row_category:
             continue
-        if brand and brand not in name:
+        if brand and brand not in str(row_brand).lower():
             continue
-        if not (filters['price_min'] <= row[7] <= filters['price_max']):
+        if row[7] is not None and not (filters['price_min'] <= row[7] <= filters['price_max']):
             continue
         if row[3] < filters['cpu_speed'] or row[4] < filters['ram'] or row[5] < filters['storage'] or row[6] < filters['screen_size']:
             continue
         if operating_system and operating_system not in infer_os_and_cpu(row[1] or '', row[2] or '')[0].lower():
             continue
-        matched.append(_api_device(row, filters['use_case'], filters['work_profile'], metadata_map.get(row[0])))
+        matched.append(_api_device(row, filters['use_case'], filters['work_profile'], metadata, offers_map.get(row[0], [])))
+    matched.sort(key=lambda item: (
+        not item.get('allowed', True),
+        -(item.get('security') or {}).get('score', 0),
+        -(item.get('benchmark') or {}).get('overall_index', 0),
+        (item.get('offers') or [{}])[0].get('total_price', float('inf')),
+        item.get('name', '').lower(),
+    ))
     start = (filters['page'] - 1) * filters['page_size']
     end = start + filters['page_size']
     return matched[start:end], len(matched)
@@ -776,7 +1073,9 @@ def _api_catalogue(filters):
 
 @app.route('/api/v1/healthz')
 def api_healthz():
-    return jsonify({'status': 'ok', 'service': 'device-provisioning-toolkit', 'api_version': 'v1'})
+    return jsonify({'status': 'ok', 'service': 'device-provisioning-toolkit', 'api_version': 'v1',
+                    'catalogue_state': _catalogue_state(),
+                    'live_data_required': app.config['LIVE_DATA_REQUIRED']})
 
 
 @app.route('/api/v1/catalogue/status', methods=['GET'])
@@ -788,10 +1087,27 @@ def api_catalogue_status():
                           FROM device_catalogue_metadata GROUP BY source, source_url
                           ORDER BY MAX(retrieved_at) DESC''').fetchall()
     product_count = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
+    offer_count = conn.execute('SELECT COUNT(*) FROM device_offers').fetchone()[0]
+    current_offer_count = conn.execute(
+        'SELECT COUNT(*) FROM device_offers WHERE expires_at IS NULL OR expires_at > ?', (_utc_now(),)
+    ).fetchone()[0]
+    benchmark_count = conn.execute('SELECT COUNT(DISTINCT device_id) FROM benchmark_results').fetchone()[0]
+    security_count = conn.execute('SELECT COUNT(DISTINCT device_id) FROM security_evidence').fetchone()[0]
+    identity_count = conn.execute("SELECT COUNT(*) FROM devices WHERE brand IS NOT NULL AND model IS NOT NULL").fetchone()[0]
+    sample_count = conn.execute("SELECT COUNT(*) FROM device_catalogue_metadata WHERE source_state = 'sample'").fetchone()[0]
     conn.close()
+    visible_product_count = product_count if app.config['ALLOW_SAMPLE_DATA'] else max(0, product_count - sample_count)
     return jsonify({
-        'api_version': 'v1', 'product_count': product_count,
+        'api_version': 'v1', 'product_count': visible_product_count,
+        'catalogue_state': _catalogue_state(product_count=product_count, offer_count=offer_count),
         'live_scraping': False,
+        'sample_data': app.config['ALLOW_SAMPLE_DATA'],
+        'live_data_required': app.config['LIVE_DATA_REQUIRED'],
+        'offer_count': offer_count, 'current_offer_count': current_offer_count,
+        'benchmark_coverage': benchmark_count,
+        'security_evidence_coverage': security_count,
+        'identity_coverage': identity_count,
+        'providers': provider_descriptors(),
         'sources': [{'source': row[0], 'source_url': row[1], 'retrieved_at': row[2],
                      'price_checked_at': row[3], 'product_count': row[4]} for row in rows],
     })
@@ -839,8 +1155,9 @@ def api_device(device_id):
     work_profile = _normalise_work_profile(request.args.get('work_profile', 'general_office'))
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
     row = conn.execute('SELECT * FROM devices WHERE id = ?', (device_id,)).fetchone()
+    metadata = conn.execute('SELECT source_state FROM device_catalogue_metadata WHERE device_id = ?', (device_id,)).fetchone()
     conn.close()
-    if not row:
+    if not row or (not app.config['ALLOW_SAMPLE_DATA'] and metadata and metadata[0] == 'sample'):
         return jsonify({'error': 'device not found'}), 404
     return jsonify({'item': _api_device(row, use_case, work_profile), 'api_version': 'v1'})
 
@@ -902,11 +1219,16 @@ def api_comparisons(device_id):
 def api_criteria():
     """Return bounded, data-backed choices for the guided frontend."""
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    visibility_clause = '' if app.config['ALLOW_SAMPLE_DATA'] else " AND COALESCE(m.source_state, 'sample') != 'sample'"
     categories = [row[0] for row in conn.execute(
-        'SELECT DISTINCT category FROM devices WHERE category IS NOT NULL ORDER BY category'
+        f'''SELECT DISTINCT d.category FROM devices d
+            LEFT JOIN device_catalogue_metadata m ON m.device_id = d.id
+            WHERE d.category IS NOT NULL {visibility_clause} ORDER BY d.category'''
     ).fetchall()]
     known_brands = ('Acer', 'Apple', 'ASUS', 'Dell', 'Google', 'HP', 'Lenovo', 'Microsoft', 'Samsung')
-    names = [str(row[0] or '').lower() for row in conn.execute('SELECT name FROM devices').fetchall()]
+    names = [str(row[0] or '').lower() for row in conn.execute(
+        f'''SELECT d.name FROM devices d LEFT JOIN device_catalogue_metadata m ON m.device_id = d.id
+            WHERE 1=1 {visibility_clause}''').fetchall()]
     brands = [brand for brand in known_brands if any(brand.lower() in name for name in names)]
     conn.close()
     return jsonify({
@@ -1021,7 +1343,9 @@ def index():
             
             if cached_results:
                 devices = cached_results
-            elif name and app.config['ENABLE_LIVE_SCRAPING']:  # Optional live search
+            # Retained legacy form handling never activates retailer scraping.
+            # Provider workers populate the reviewed API catalogue instead.
+            elif name and app.config['PROVIDER_SYNC_ENABLED'] and False:
                 print(f"[LIVE SEARCH] Searching for: {name}")
                 # Perform live web scraping for fresh results
                 live_results = device_scraper.search_devices_live(name, max_results=20)
@@ -1234,65 +1558,123 @@ def flowchart():
     return "Flowchart functionality moved to device-specific pages"
 
 def populate_database_with_real_data():
-    """Populate database with real device data from CSV (preferred) or web sources"""
+    """Load a local fixture only when explicitly enabled for development/tests."""
+    if not app.config['ALLOW_SAMPLE_DATA']:
+        print('Catalogue bootstrap skipped: ALLOW_SAMPLE_DATA is false')
+        return
     try:
-        print("Fetching device data (CSV-preferred)...")
-        # Try CSV first - this is the preferred source
+        print("Loading explicitly enabled local catalogue fixture...")
         real_devices = device_scraper.load_devices_from_csv('devices.csv')
-        
-        # Fallback to web scraping and fallback data if CSV is insufficient
-        if not real_devices or len(real_devices) < 8:
-            print("CSV insufficient or not found, attempting web scraping...")
-            scraped_devices = device_scraper.get_real_device_data()
-            if scraped_devices and len(scraped_devices) >= 8:
-                real_devices = scraped_devices
-                print(f"Successfully scraped {len(real_devices)} devices from web sources")
-            else:
-                print("Web scraping unsuccessful or insufficient, using fallback data...")
-                real_devices = FALLBACK_DEVICE_DATA
-        else:
-            print(f"Successfully loaded {len(real_devices)} devices from CSV")
-        
-        replace_catalogue(real_devices)
+        if not real_devices:
+            real_devices = FALLBACK_DEVICE_DATA
+        replace_catalogue(real_devices, feed_source='Local development fixture')
         print(f"Successfully populated database with {len(real_devices)} devices")
-        
     except Exception as e:
         print(f"Error populating database: {e}")
-        # Use fallback data
-        populate_fallback_data()
 
 def populate_fallback_data():
-    """Populate database with fallback data if web scraping fails"""
-    replace_catalogue(FALLBACK_DEVICE_DATA)
-    print(f"Populated database with {len(FALLBACK_DEVICE_DATA)} fallback devices")
+    """Compatibility helper for local fixture tests; never an implicit fallback."""
+    if not app.config['ALLOW_SAMPLE_DATA']:
+        raise RuntimeError('sample data is disabled')
+    replace_catalogue(FALLBACK_DEVICE_DATA, feed_source='Local development fixture')
+    print(f"Populated database with {len(FALLBACK_DEVICE_DATA)} local fixture devices")
 
 
 def replace_catalogue(products, feed_source='Curated local catalogue', feed_source_url=None, retrieved_at=None):
-    """Atomically replace the pilot catalogue and its freshness metadata."""
+    """Atomically replace the catalogue and its evidence records.
+
+    This function accepts only already-normalised operator/test feed records.
+    It never calls a scraper or invents an offer, benchmark or vulnerability.
+    """
     retrieved_at = retrieved_at or _utc_now()
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
     cursor = conn.cursor()
     try:
+        cursor.execute('DELETE FROM device_offers')
+        cursor.execute('DELETE FROM benchmark_results')
+        cursor.execute('DELETE FROM security_evidence')
+        cursor.execute('DELETE FROM support_lifecycle')
         cursor.execute('DELETE FROM device_catalogue_metadata')
         cursor.execute('DELETE FROM devices')
         for product in products:
+            identity = product.get('identity') or _derived_identity(product.get('name'), product.get('category'))
+            source_state = str(product.get('source_state') or (
+                'sample' if 'fixture' in str(feed_source).lower() or 'sample' in str(feed_source).lower()
+                else 'reviewed'
+            ))[:24]
             cursor.execute('''INSERT INTO devices
-                (name, category, cpu_speed, ram, storage, screen_size, price)
-                VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (name, category, cpu_speed, ram, storage, screen_size, price,
+                 brand, model, variant, mpn, gtin, sku, region, release_date,
+                 operating_system, source_state, image_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (product['name'], product['category'], product['cpu_speed'],
-                 product['ram'], product['storage'], product['screen_size'], product['price']))
+                 product['ram'], product['storage'], product['screen_size'], product.get('price'),
+                 identity.get('brand'), identity.get('model'), identity.get('variant'),
+                 identity.get('mpn'), identity.get('gtin'), identity.get('sku'), identity.get('region', 'GB'),
+                 product.get('release_date'), product.get('operating_system'), source_state,
+                 product.get('image_url')))
+            device_id = cursor.lastrowid
             cursor.execute('''INSERT INTO device_catalogue_metadata
                 (device_id, source, source_url, retrieved_at, price_checked_at,
                  availability, expires_at, support_until, warranty, image_license,
-                 evidence_url, evidence_quality)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (cursor.lastrowid, str(product.get('source') or feed_source)[:160],
+                 evidence_url, evidence_quality, source_state, source_license,
+                 confidence, freshness_hours)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (device_id, str(product.get('source') or feed_source)[:160],
                  product.get('source_url') or feed_source_url, retrieved_at,
                  product.get('price_checked_at') or retrieved_at,
                  str(product.get('availability') or 'unknown')[:40],
                  product.get('expires_at'), product.get('support_until'),
                  product.get('warranty'), product.get('image_license'),
-                 product.get('evidence_url'), product.get('evidence_quality', 'reviewed')))
+                 product.get('evidence_url'), product.get('evidence_quality', 'reviewed'), source_state,
+                 product.get('source_license'), product.get('confidence', 'medium'),
+                 product.get('freshness_hours', app.config['CATALOGUE_TTL_HOURS'])))
+            for offer in product.get('offers', []):
+                cursor.execute('''INSERT INTO device_offers
+                    (device_id, provider, vendor, seller, url, affiliate_url,
+                     product_identifier, condition, price, item_price, delivery_price,
+                     total_price, currency, availability, stock_message,
+                     checked_at, expires_at, source_url, source_license,
+                     is_affiliate, is_sponsored)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (device_id, offer.get('provider') or product.get('source') or feed_source,
+                     offer['vendor'], offer.get('seller'), offer['url'], offer.get('affiliate_url'),
+                     offer.get('product_identifier') or identity.get('gtin') or identity.get('mpn') or identity.get('model'),
+                     offer.get('condition', 'new'), offer.get('price'), offer.get('item_price', offer.get('price')),
+                     offer.get('delivery_price'), offer.get('total_price', offer.get('price')),
+                     offer.get('currency', 'GBP'), offer.get('availability', 'unknown'), offer.get('stock_message'),
+                     offer.get('checked_at') or retrieved_at, offer.get('expires_at'),
+                     offer.get('source_url') or product.get('source_url') or feed_source_url,
+                     offer.get('source_license') or product.get('source_license'),
+                     int(bool(offer.get('is_affiliate'))), int(bool(offer.get('is_sponsored')))))
+            for benchmark in product.get('benchmarks', []):
+                cursor.execute('''INSERT INTO benchmark_results
+                    (device_id, suite, version, workload, score, evidence_type,
+                     source_url, licence, tested_at, confidence, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (device_id, benchmark.get('suite'), benchmark.get('version'), benchmark.get('workload'),
+                     benchmark.get('score'), benchmark.get('evidence_type', 'unknown'), benchmark.get('source_url'),
+                     benchmark.get('licence'), benchmark.get('tested_at') or retrieved_at,
+                     benchmark.get('confidence', 'medium'), benchmark.get('notes')))
+            for evidence in product.get('security_evidence', []):
+                cursor.execute('''INSERT INTO security_evidence
+                    (device_id, provider, cve_id, cpe, kev_status, affected_version,
+                     fixed_version, source_url, checked_at, evidence_type, confidence, summary)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (device_id, evidence.get('provider'), evidence.get('cve_id'), evidence.get('cpe'),
+                     evidence.get('kev_status'), evidence.get('affected_version'), evidence.get('fixed_version'),
+                     evidence.get('source_url'), evidence.get('checked_at') or retrieved_at,
+                     evidence.get('evidence_type', 'independent_published'), evidence.get('confidence', 'medium'),
+                     evidence.get('summary')))
+            support = product.get('support_lifecycle')
+            if support:
+                cursor.execute('''INSERT INTO support_lifecycle
+                    (device_id, operating_system, support_until, patch_cadence,
+                     source_url, checked_at, confidence)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                    (device_id, support.get('operating_system') or product.get('operating_system'),
+                     support.get('support_until'), support.get('patch_cadence'), support.get('source_url'),
+                     support.get('checked_at') or retrieved_at, support.get('confidence', 'medium')))
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1322,14 +1704,26 @@ def validate_catalogue_feed(payload):
         if not isinstance(product, dict):
             raise ValueError(f'product {index + 1} must be an object')
         try:
+            brand = str(product['brand']).strip()[:80]
+            model = str(product['model']).strip()[:120]
+            if not brand or not model:
+                raise ValueError('brand and model are required')
             item = {
                 'name': str(product['name']).strip()[:160],
                 'category': str(product['category']).strip()[:60],
+                'identity': {
+                    'brand': brand, 'model': model,
+                    'variant': str(product.get('variant') or '').strip()[:120] or None,
+                    'mpn': str(product.get('mpn') or '').strip()[:80] or None,
+                    'gtin': str(product.get('gtin') or '').strip()[:32] or None,
+                    'sku': str(product.get('sku') or '').strip()[:80] or None,
+                    'region': str(product.get('region') or 'GB').strip()[:8].upper(),
+                },
                 'cpu_speed': float(product.get('cpu_speed', 0)),
                 'ram': int(product.get('ram', 0)),
                 'storage': int(product.get('storage', 0)),
                 'screen_size': float(product.get('screen_size', 0)),
-                'price': float(product.get('price', 0)),
+                'price': float(product['price']) if product.get('price') is not None else None,
                 'availability': str(product.get('availability') or 'unknown')[:40],
                 'source': source,
                 'source_url': source_url,
@@ -1340,6 +1734,17 @@ def validate_catalogue_feed(payload):
                 'image_license': str(product.get('image_license') or '')[:160] or None,
                 'evidence_url': product.get('evidence_url'),
                 'evidence_quality': str(product.get('evidence_quality') or 'reviewed')[:40],
+                'source_license': str(product.get('source_license') or '')[:200] or None,
+                'confidence': str(product.get('confidence') or 'medium')[:20],
+                'freshness_hours': int(product.get('freshness_hours') or app.config['CATALOGUE_TTL_HOURS']),
+                'release_date': product.get('release_date'),
+                'operating_system': str(product.get('operating_system') or '')[:80] or None,
+                'image_url': product.get('image_url'),
+                'source_state': str(product.get('source_state') or 'reviewed')[:24],
+                'benchmarks': product.get('benchmarks') or [],
+                'security_evidence': product.get('security_evidence') or [],
+                'support_lifecycle': product.get('support_lifecycle'),
+                'offers': product.get('offers') or [],
             }
         except (KeyError, TypeError, ValueError):
             raise ValueError(f'product {index + 1} has invalid fields')
@@ -1353,7 +1758,88 @@ def validate_catalogue_feed(payload):
                     raise ValueError(f'product {index + 1} has invalid {url_field}')
         if item['evidence_quality'] not in {'reviewed', 'vendor', 'independent', 'unknown'}:
             raise ValueError(f'product {index + 1} has invalid evidence_quality')
-        if not item['name'] or not item['category'] or item['price'] < 0 or item['cpu_speed'] < 0 or item['ram'] < 0 or item['storage'] < 0 or item['screen_size'] < 0:
+        if item['source_state'] not in {'verified', 'reviewed', 'sample'}:
+            raise ValueError(f'product {index + 1} has invalid source_state')
+        if item['confidence'] not in {'high', 'medium', 'low', 'unknown'}:
+            raise ValueError(f'product {index + 1} has invalid confidence')
+        if item['image_url']:
+            image_url = urlparse(str(item['image_url']))
+            if image_url.scheme != 'https' or not image_url.hostname or image_url.username or image_url.password:
+                raise ValueError(f'product {index + 1} has invalid image_url')
+        offers = []
+        if not isinstance(product.get('offers', []), list) or len(product.get('offers', [])) > 30:
+            raise ValueError(f'product {index + 1} has invalid offers')
+        for offer_index, offer in enumerate(product.get('offers', [])):
+            if not isinstance(offer, dict):
+                raise ValueError(f'product {index + 1} offer {offer_index + 1} must be an object')
+            vendor = str(offer.get('vendor') or '').strip()[:80]
+            url = offer.get('url')
+            parsed_offer_url = urlparse(str(url or ''))
+            if not vendor or parsed_offer_url.scheme != 'https' or not parsed_offer_url.hostname or parsed_offer_url.username or parsed_offer_url.password:
+                raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid vendor or URL')
+            price = offer.get('price')
+            if price is not None:
+                try:
+                    price = float(price)
+                except (TypeError, ValueError):
+                    raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid price')
+                if price < 0:
+                    raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid price')
+            checked_at = offer.get('checked_at') or retrieved_at
+            expires_at = offer.get('expires_at')
+            for field_name, field_value in (('checked_at', checked_at), ('expires_at', expires_at)):
+                if field_value is not None and (not isinstance(field_value, str) or len(field_value) > 80):
+                    raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid {field_name}')
+            offer_source_url = offer.get('source_url') or source_url
+            if offer_source_url:
+                parsed_offer_source = urlparse(str(offer_source_url))
+                if parsed_offer_source.scheme != 'https' or not parsed_offer_source.hostname or parsed_offer_source.username or parsed_offer_source.password:
+                    raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid source_url')
+            affiliate_url = offer.get('affiliate_url')
+            if affiliate_url:
+                parsed_affiliate = urlparse(str(affiliate_url))
+                if parsed_affiliate.scheme != 'https' or not parsed_affiliate.hostname or parsed_affiliate.username or parsed_affiliate.password:
+                    raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid affiliate_url')
+            for money_name in ('item_price', 'delivery_price', 'total_price'):
+                if offer.get(money_name) is not None:
+                    try:
+                        if float(offer[money_name]) < 0:
+                            raise ValueError
+                    except (TypeError, ValueError):
+                        raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid {money_name}')
+            offers.append({
+                'vendor': vendor, 'url': str(url), 'price': price,
+                'provider': str(offer.get('provider') or source)[:80],
+                'seller': str(offer.get('seller') or '')[:120] or None,
+                'affiliate_url': offer.get('affiliate_url'),
+                'product_identifier': str(offer.get('product_identifier') or item['identity']['gtin'] or item['identity']['mpn'] or item['identity']['model'])[:120],
+                'condition': str(offer.get('condition') or 'new')[:30],
+                'item_price': float(offer['item_price']) if offer.get('item_price') is not None else price,
+                'delivery_price': float(offer['delivery_price']) if offer.get('delivery_price') is not None else None,
+                'total_price': float(offer['total_price']) if offer.get('total_price') is not None else price,
+                'stock_message': str(offer.get('stock_message') or '')[:160] or None,
+                'source_license': str(offer.get('source_license') or item['source_license'] or '')[:200] or None,
+                'is_affiliate': bool(offer.get('is_affiliate')),
+                'is_sponsored': bool(offer.get('is_sponsored')),
+                'currency': str(offer.get('currency') or 'GBP')[:3],
+                'availability': str(offer.get('availability') or 'unknown')[:40],
+                'checked_at': checked_at, 'expires_at': expires_at,
+                'source_url': offer_source_url,
+            })
+        item['offers'] = offers
+        for evidence in item['benchmarks']:
+            if not isinstance(evidence, dict) or str(evidence.get('evidence_type') or 'unknown') not in {'measured', 'independent_published', 'vendor_claimed', 'specification_estimate', 'unknown'}:
+                raise ValueError(f'product {index + 1} has invalid benchmark evidence')
+            if evidence.get('source_url') and urlparse(str(evidence['source_url'])).scheme != 'https':
+                raise ValueError(f'product {index + 1} has invalid benchmark source_url')
+        for evidence in item['security_evidence']:
+            if not isinstance(evidence, dict) or not evidence.get('provider'):
+                raise ValueError(f'product {index + 1} has invalid security evidence')
+            if evidence.get('source_url') and urlparse(str(evidence['source_url'])).scheme != 'https':
+                raise ValueError(f'product {index + 1} has invalid security source_url')
+        if (not item['name'] or not item['category'] or
+                (item['price'] is not None and item['price'] < 0) or
+                item['cpu_speed'] < 0 or item['ram'] < 0 or item['storage'] < 0 or item['screen_size'] < 0):
             raise ValueError(f'product {index + 1} has invalid values')
         normalised.append(item)
     return normalised, source, source_url, retrieved_at
@@ -1390,14 +1876,64 @@ def ensure_database_schema():
          expires_at TEXT, support_until TEXT, warranty TEXT, image_license TEXT,
          evidence_url TEXT, evidence_quality TEXT NOT NULL DEFAULT 'unknown',
          FOREIGN KEY(device_id) REFERENCES devices(id))''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS device_offers
+        (id INTEGER PRIMARY KEY, device_id INTEGER NOT NULL, vendor TEXT NOT NULL,
+         url TEXT NOT NULL, price REAL, currency TEXT NOT NULL DEFAULT 'GBP',
+         availability TEXT NOT NULL DEFAULT 'unknown', checked_at TEXT NOT NULL,
+         expires_at TEXT, source_url TEXT,
+         FOREIGN KEY(device_id) REFERENCES devices(id))''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS benchmark_results
+        (id INTEGER PRIMARY KEY, device_id INTEGER NOT NULL, suite TEXT NOT NULL,
+         version TEXT, workload TEXT, score REAL, evidence_type TEXT NOT NULL,
+         source_url TEXT, licence TEXT, tested_at TEXT NOT NULL,
+         confidence TEXT NOT NULL DEFAULT 'unknown', notes TEXT,
+         FOREIGN KEY(device_id) REFERENCES devices(id))''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS security_evidence
+        (id INTEGER PRIMARY KEY, device_id INTEGER NOT NULL, provider TEXT NOT NULL,
+         cve_id TEXT, cpe TEXT, kev_status TEXT, affected_version TEXT,
+         fixed_version TEXT, source_url TEXT, checked_at TEXT NOT NULL,
+         evidence_type TEXT NOT NULL, confidence TEXT NOT NULL DEFAULT 'unknown',
+         summary TEXT, FOREIGN KEY(device_id) REFERENCES devices(id))''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS support_lifecycle
+        (id INTEGER PRIMARY KEY, device_id INTEGER NOT NULL, operating_system TEXT,
+         support_until TEXT, patch_cadence TEXT, source_url TEXT,
+         checked_at TEXT NOT NULL, confidence TEXT NOT NULL DEFAULT 'unknown',
+         FOREIGN KEY(device_id) REFERENCES devices(id))''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS provider_runs
+        (id INTEGER PRIMARY KEY, provider TEXT NOT NULL, status TEXT NOT NULL,
+         started_at TEXT NOT NULL, completed_at TEXT, item_count INTEGER NOT NULL DEFAULT 0,
+         error_summary TEXT, source_url TEXT)''')
+    existing_columns = {row[1] for row in cursor.execute('PRAGMA table_info(devices)').fetchall()}
+    for column, definition in (
+        ('brand', 'TEXT'), ('model', 'TEXT'), ('variant', 'TEXT'), ('mpn', 'TEXT'),
+        ('gtin', 'TEXT'), ('sku', 'TEXT'), ('region', "TEXT DEFAULT 'GB'"),
+        ('release_date', 'TEXT'), ('operating_system', 'TEXT'), ('source_state', "TEXT DEFAULT 'sample'"),
+        ('image_url', 'TEXT'),
+    ):
+        if column not in existing_columns:
+            cursor.execute(f'ALTER TABLE devices ADD COLUMN {column} {definition}')
     existing_columns = {row[1] for row in cursor.execute('PRAGMA table_info(device_catalogue_metadata)').fetchall()}
     for column, definition in (
         ('expires_at', 'TEXT'), ('support_until', 'TEXT'), ('warranty', 'TEXT'),
         ('image_license', 'TEXT'), ('evidence_url', 'TEXT'),
         ('evidence_quality', "TEXT NOT NULL DEFAULT 'unknown'"),
+        ('source_state', "TEXT NOT NULL DEFAULT 'sample'"), ('source_license', 'TEXT'),
+        ('confidence', "TEXT NOT NULL DEFAULT 'unknown'"), ('freshness_hours', 'INTEGER'),
     ):
         if column not in existing_columns:
             cursor.execute(f'ALTER TABLE device_catalogue_metadata ADD COLUMN {column} {definition}')
+    existing_columns = {row[1] for row in cursor.execute('PRAGMA table_info(device_offers)').fetchall()}
+    for column, definition in (
+        ('provider', "TEXT NOT NULL DEFAULT 'operator_feed'"), ('seller', 'TEXT'),
+        ('affiliate_url', 'TEXT'), ('product_identifier', 'TEXT'), ('condition', "TEXT DEFAULT 'new'"),
+        ('item_price', 'REAL'), ('delivery_price', 'REAL'), ('total_price', 'REAL'),
+        ('stock_message', 'TEXT'), ('source_license', 'TEXT'),
+        ('is_affiliate', 'INTEGER NOT NULL DEFAULT 0'), ('is_sponsored', 'INTEGER NOT NULL DEFAULT 0'),
+    ):
+        if column not in existing_columns:
+            cursor.execute(f'ALTER TABLE device_offers ADD COLUMN {column} {definition}')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_device_offers_device_total_price ON device_offers(device_id, total_price)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_devices_identity ON devices(brand, model, region)')
     if not cursor.execute('SELECT 1 FROM PersonalUseSoftware LIMIT 1').fetchone():
         cursor.executemany('INSERT INTO PersonalUseSoftware (Software) VALUES (?)',
                            [(name,) for name in ('Norton 360', 'Bitdefender Total Security', 'Avast Free')])
@@ -1417,44 +1953,21 @@ def ensure_database_schema():
     has_devices = cursor.execute('SELECT 1 FROM devices LIMIT 1').fetchone()
     if has_devices:
         cursor.execute('''INSERT OR IGNORE INTO device_catalogue_metadata
-            (device_id, source, source_url, retrieved_at, price_checked_at, availability)
-            SELECT id, 'Curated local catalogue', NULL, ?, NULL, 'unknown' FROM devices''', (_utc_now(),))
+            (device_id, source, source_url, retrieved_at, price_checked_at, availability, source_state)
+            SELECT id, 'Local legacy catalogue', NULL, ?, NULL, 'unknown', 'sample' FROM devices''', (_utc_now(),))
+        cursor.execute("UPDATE device_catalogue_metadata SET source_state = 'sample' WHERE source IN ('Curated local catalogue', 'Local legacy catalogue') AND source_state IS NULL")
         conn.commit()
     conn.close()
     if not has_devices:
         populate_database_with_real_data()
 
 def get_device_image_url(device_name, scraped_url=None):
-    """Get device image URL: prioritize scraped images, fallback to static placeholders"""
-    # Use scraped image URL if available (from web scraping)
-    if scraped_url and (scraped_url.startswith('http://') or scraped_url.startswith('https://')):
+    """Return a licensed HTTPS image URL, or no image when evidence is absent."""
+    if scraped_url and urlparse(str(scraped_url)).scheme == 'https' and urlparse(str(scraped_url)).hostname:
         return scraped_url
-    
-    # Fallback: use local placeholder images if no scraped URL
-    # Map device types to appropriate placeholder images
-    device_name_lower = device_name.lower()
-    
-    if 'laptop' in device_name_lower or 'book' in device_name_lower:
-        return '/static/images/1.jpg'  # Laptop placeholder
-    elif 'desktop' in device_name_lower or 'pc' in device_name_lower:
-        return '/static/images/2.jpg'  # Desktop placeholder
-    elif 'tablet' in device_name_lower or 'ipad' in device_name_lower:
-        return '/static/images/3.jpg'  # Tablet placeholder
-    elif 'apple' in device_name_lower or 'mac' in device_name_lower:
-        return '/static/images/4.jpg'  # Apple device placeholder
-    elif 'dell' in device_name_lower:
-        return '/static/images/5.jpg'  # Dell placeholder
-    elif 'hp' in device_name_lower:
-        return '/static/images/6.jpg'  # HP placeholder
-    elif 'lenovo' in device_name_lower:
-        return '/static/images/7.jpg'  # Lenovo placeholder
-    elif 'microsoft' in device_name_lower or 'surface' in device_name_lower:
-        return '/static/images/8.jpg'  # Microsoft placeholder
-    else:
-        # Default to a random placeholder from available images
-        base_path = '/static/images'
-        image_num = abs(hash(device_name)) % 16 + 1  # Deterministic but varied
-        return f'{base_path}/{image_num}.jpg'
+    # Fixture imagery is intentionally opt-in and is never emitted by the
+    # default production configuration.
+    return '/static/images/1.jpg' if app.config.get('ALLOW_SAMPLE_DATA') else None
 
 # Initialize the pilot schema without requiring an untracked local database.
 print("Initializing database with device data...")
@@ -1519,28 +2032,13 @@ def search_live():
         if not search_term or len(search_term) < 2:
             return jsonify({'error': 'Search term too short'}), 400
         
-        if not app.config['ENABLE_LIVE_SCRAPING']:
-            return jsonify({'error': 'live search is disabled'}), 503
-        print(f"[API] Live search for: {search_term}")
-        results = device_scraper.search_devices_live(search_term, max_results=max_results)
-        
-        if not results:
-            return jsonify({
-                'query': search_term,
-                'results': [],
-                'message': 'No devices found for this search term',
-                'source': 'live_web_search'
-            }), 200
-        
-        # Apply security scoring to results
-        enriched_results = apply_rule_engine(results, use_case='Personal')
-        
         return jsonify({
             'query': search_term,
-            'results': enriched_results[:max_results],
-            'total_found': len(enriched_results),
-            'source': 'live_web_search'
-        }), 200
+            'results': [],
+            'total_found': 0,
+            'source': 'approved_provider_feed',
+            'message': 'Live retailer search is disabled until provider terms, access and rate limits are approved.'
+        }), 503
         
     except Exception as e:
         print(f"Live search error: {e}")
@@ -1561,20 +2059,7 @@ def get_current_price():
         if not device_name:
             return jsonify({'error': 'Device name required'}), 400
         
-        if not app.config['ENABLE_LIVE_SCRAPING']:
-            return jsonify({'error': 'live pricing is disabled'}), 503
-        print(f"[API] Fetching current price from {retailer} for: {device_name}")
-        
-        price_info = device_scraper.get_retailer_current_price(device_name, retailer)
-        
-        return jsonify({
-            'device': device_name,
-            'retailer': retailer,
-            'price': price_info['price'],
-            'link': price_info['link'],
-            'available': price_info['available'],
-            'timestamp': time.time()
-        }), 200
+        return jsonify({'error': 'live pricing is disabled; use an approved imported offer feed'}), 503
         
     except Exception as e:
         print(f"Price fetch error: {e}")
@@ -1583,28 +2068,22 @@ def get_current_price():
 @app.route("/refresh-devices", methods=["POST"])
 @admin_mutation_required
 def refresh_devices():
-    """Refresh device data from web sources"""
-    try:
-        print("Refreshing device data from web sources...")
-        real_devices = device_scraper.get_real_device_data()
-        
-        if not real_devices:
-            real_devices = FALLBACK_DEVICE_DATA
-        
-        replace_catalogue(real_devices, feed_source='Operator refresh')
-        
-        return jsonify({
-            'success': True, 
-            'message': f'Successfully refreshed {len(real_devices)} devices',
-            'count': len(real_devices)
-        })
-        
-    except Exception as e:
-        print(f"Error refreshing devices: {e}")
-        return jsonify({
-            'success': False, 
-            'message': f'Error refreshing devices: {str(e)}'
-        }), 500
+    """Operator-only provider refresh boundary; no scraper fallback."""
+    if not app.config['PROVIDER_SYNC_ENABLED']:
+        return jsonify({'success': False, 'status': 'provider_sync_disabled',
+                        'message': 'Provider sync is disabled until approved adapters and credentials are configured.'}), 503
+    provider = (request.get_json(silent=True) or {}).get('provider', '')
+    result = run_provider(str(provider), enabled=app.config['PROVIDER_SYNC_ENABLED'])
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    conn.execute(
+        '''INSERT INTO provider_runs (provider, status, started_at, completed_at, item_count, error_summary)
+           VALUES (?, ?, ?, ?, ?, ?)''',
+        (result['provider'], result['status'], result['started_at'], result.get('completed_at'),
+         result.get('item_count', 0), result.get('error_summary'))
+    )
+    conn.commit()
+    conn.close()
+    return jsonify(result), 503 if result['status'] != 'completed' else 202
 
 @app.route("/compare-devices", methods=["POST"])
 def compare_devices():
@@ -1919,27 +2398,19 @@ SCRAPE_THREAD = None
 SCRAPE_LOCK = threading.Lock()
 
 def background_scrape():
-    """Refresh devices in background without blocking request thread."""
-    print("[AsyncScrape] Background scrape started")
-    try:
-        real_devices = device_scraper.get_real_device_data()
-        if real_devices:
-            replace_catalogue(real_devices, feed_source='Background operator refresh')
-            print(f"[AsyncScrape] Updated {len(real_devices)} devices")
-        else:
-            print("[AsyncScrape] No real devices fetched; skipping update")
-    except Exception as e:
-        print(f"[AsyncScrape] Error: {e}")
-    finally:
-        with SCRAPE_LOCK:
-            global SCRAPE_THREAD
-            SCRAPE_THREAD = None
-        print("[AsyncScrape] Background scrape finished")
+    """Compatibility worker; approved provider jobs replace this boundary."""
+    global SCRAPE_THREAD
+    print('[AsyncProvider] Background provider sync is not configured')
+    with SCRAPE_LOCK:
+        SCRAPE_THREAD = None
 
 @app.route('/async-refresh', methods=['POST'])
 @admin_mutation_required
 def async_refresh():
     global SCRAPE_THREAD
+    if not app.config['PROVIDER_SYNC_ENABLED']:
+        return jsonify({'status': 'provider_sync_disabled',
+                        'message': 'Provider sync is disabled until approved adapters are configured.'}), 503
     with SCRAPE_LOCK:
         if SCRAPE_THREAD and SCRAPE_THREAD.is_alive():
             return jsonify({'status': 'in_progress'}), 202

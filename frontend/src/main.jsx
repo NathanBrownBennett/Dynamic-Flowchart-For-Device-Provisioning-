@@ -35,9 +35,38 @@ function freshnessLabel(catalogue) {
   return expires < new Date() ? 'This price observation may be stale' : `Checked until ${catalogue.expires_at.slice(0, 10)}`
 }
 
+function formatPrice(offer) {
+  const value = offer?.total_price ?? offer?.price
+  if (value == null) return 'Price not verified'
+  const prefix = offer.currency === 'GBP' ? '£' : `${offer.currency || ''} `
+  return `${prefix}${Number(value).toLocaleString()}${offer.total_price_complete ? '' : ' + delivery if applicable'}`
+}
+
+function currentOffer(device) {
+  return (device.offers || []).find((offer) => offer.total_price != null || offer.price != null)
+}
+
+function catalogueStateLabel(status) {
+  const labels = { current: 'Current provider feed', partial: 'Catalogue current · prices incomplete', sample: 'Local fixture mode', stale: 'Catalogue needs refresh', unavailable: 'Live catalogue unavailable', empty: 'No live catalogue loaded' }
+  return labels[status?.catalogue_state] || 'Evidence status loading'
+}
+
+function offerFreshness(offer) {
+  if (!offer.checked_at) return 'No check date'
+  if (offer.expires_at && new Date(offer.expires_at) < new Date()) return 'Price may be stale'
+  return `Checked ${offer.checked_at.slice(0, 10)}`
+}
+
+function VendorOffers({ device }) {
+  const offers = device.offers || []
+  if (!offers.length) return <section className="comparison-box vendor-box"><div className="section-heading"><div><h3>Where to buy</h3><p className="small-note">No approved live vendor price feed is attached to this device yet.</p></div></div><div className="retailer-list">{(device.vendor_links || []).map((vendor) => <a key={vendor.vendor} href={vendor.url} target="_blank" rel="noreferrer noopener">Search {vendor.vendor}</a>)}</div><p className="small-note vendor-warning">These are vendor search links, not verified offers, so they are not ranked by price.</p></section>
+  return <section className="comparison-box vendor-box"><div className="section-heading"><div><h3>Vendor offers</h3><p className="small-note">Current offers are sorted by total known cost. Delivery or basket charges may still change.</p></div><span className="offer-count">{offers.length} checked</span></div><div className="offer-list">{offers.map((offer, index) => <a className="offer-row" key={`${offer.vendor}-${offer.url}`} href={offer.url} target="_blank" rel="noreferrer noopener"><span className="offer-rank">{index + 1}</span><span className="offer-vendor"><strong>{offer.vendor}</strong><small>{offer.availability} · {offerFreshness(offer)}{offer.is_affiliate ? ' · affiliate link' : ''}{offer.is_sponsored ? ' · sponsored' : ''}</small></span><strong className="offer-price">{formatPrice(offer)} <span>↗</span></strong></a>)}</div></section>
+}
+
 function DeviceCard({ device, onSelect }) {
   const score = device.security?.score ?? 0
   const level = device.security?.level || 'Unrated'
+  const offer = currentOffer(device)
   return <article className="device-card">
     <div className="device-card-top">
       {device.image && <img className="device-thumb" src={device.image} alt={`${device.name} thumbnail`} loading="lazy" />}
@@ -46,8 +75,8 @@ function DeviceCard({ device, onSelect }) {
     </div>
     <p className="muted">{device.os} · {device.ram} GB RAM · {device.storage} GB storage</p>
     <p className="plain-score"><strong>{level} security baseline.</strong> {scoreCopy(level, score)}</p>
-    <p className="small-note">{device.catalogue?.source || 'Curated local catalogue'} · {freshnessLabel(device.catalogue)}</p>
-    <div className="card-footer"><strong>£{Number(device.price).toLocaleString()}</strong><button onClick={() => onSelect(device.id)}>Review device</button></div>
+    <p className="small-note">{device.catalogue?.source || 'Source unavailable'} · {freshnessLabel(device.catalogue)}</p>
+    <div className="card-footer"><strong>{offer ? formatPrice(offer) : 'Price not currently verified'}</strong><button onClick={() => onSelect(device.id)}>Review device</button></div>
   </article>
 }
 
@@ -67,7 +96,7 @@ function DeviceDetail({ device, comparisons, context, onCompare, onClose }) {
       `Context: ${context.use_case}${context.work_profile ? ` · ${context.work_profile}` : ''}`,
       `Security: ${security.score ?? 0}% · ${security.level || 'Unrated'}`,
       `Performance index: ${benchmark.overall_index ?? 0}/100`,
-      `Price observed: £${device.price}`,
+      `Lowest verified total price: ${currentOffer(device) ? formatPrice(currentOffer(device)) : 'not currently verified'}`,
       `Catalogue source: ${catalogue.source || 'unknown'}`,
       `Retrieved: ${catalogue.retrieved_at || 'unknown'}`,
       `Expires: ${catalogue.expires_at || 'unknown'}`,
@@ -90,20 +119,21 @@ function DeviceDetail({ device, comparisons, context, onCompare, onClose }) {
   return <section className="detail-panel" aria-labelledby="device-review-heading">
     <div className="section-heading"><div><span className="eyebrow">03 · Device review</span><h2 id="device-review-heading">{device.name}</h2><p className="lead">{device.os} · {device.cpu_vendor} · {device.category}</p></div><button className="quiet" onClick={onClose}>Close</button></div>
     <div className="context-row"><div className="context-pill">Recommendation for: <strong>{context.use_case === 'Work' ? 'Business' : context.use_case}</strong>{context.work_profile && context.use_case === 'Work' ? ` · ${context.work_profile.replaceAll('_', ' ')}` : ''}</div><button className="secondary" onClick={downloadSummary}>Download decision summary</button></div>
-    <div className="metric-row"><Metric label="Security score" value={`${security.score ?? 0}% · ${security.level || 'Unrated'}`} /><Metric label="Price shown" value={`£${device.price}`} /><Metric label="Memory" value={`${device.ram} GB`} /><Metric label="Storage" value={`${device.storage} GB`} /></div>
-    <p className="freshness-note">Source: <strong>{catalogue.source || 'Curated local catalogue'}</strong> · {freshnessLabel(catalogue)} · Availability: {catalogue.availability || 'unknown'}</p>
+    <div className="metric-row"><Metric label="Security score" value={`${security.score ?? 0}% · ${security.level || 'Unrated'}`} /><Metric label="Lowest verified total" value={currentOffer(device) ? formatPrice(currentOffer(device)) : 'Not verified'} /><Metric label="Memory" value={`${device.ram} GB`} /><Metric label="Storage" value={`${device.storage} GB`} /></div>
+    <p className="freshness-note">Source: <strong>{catalogue.source || 'Unavailable'}</strong> · {freshnessLabel(catalogue)} · Availability: {catalogue.availability || 'unknown'} · Evidence confidence: {catalogue.confidence || 'unknown'}</p>
     <div className="detail-grid">
       <div className="detail-column">
-        <section className="guidance-block"><h3>What this means</h3><p>{scoreCopy(security.level, security.score ?? 0)}</p><p className="small-note">This is a practical comparison aid, not a security certification or a guarantee.</p></section>
+        <section className="guidance-block"><h3>What this means</h3><p>{device.experience?.summary || scoreCopy(security.level, security.score ?? 0)}</p><div className="rating-strip"><span>OS <strong>{security.os_rating ?? 0}</strong></span><span>Hardware <strong>{security.hardware_rating ?? 0}</strong></span><span>Performance <strong>{benchmark.overall_index ?? 0}</strong></span></div><p className="small-note">{device.experience?.os_context || 'Scores are a practical comparison aid, not certification.'}</p></section>
+        <section className="guidance-block"><h3>Score breakdown</h3><div className="factor-list">{(security.score_factors || []).map((factor) => <div className="factor-row" key={factor.id}><span><strong>{factor.label}</strong><small>{factor.explanation}</small></span><b className={factor.points < 0 ? 'negative' : ''}>{factor.points > 0 ? '+' : ''}{factor.points}</b></div>)}</div></section>
         <section className="guidance-block"><h3>Do these things first</h3><ul>{(security.recommendations?.settings || []).slice(0, 8).map((item, index) => <li key={index}>{item}</li>)}</ul></section>
         <section className="guidance-block"><h3>Risks to understand</h3>{(security.findings || []).length ? <ul>{security.findings.slice(0, 6).map((item, index) => <li key={index}>{item}</li>)}</ul> : <p>No specific risk was flagged by the current rules. Keep the normal update, encryption and account-safety steps.</p>}</section>
       </div>
       <div className="detail-column">
-        <section className="comparison-box"><h3>Performance at a glance</h3><div className="benchmark-grid"><Metric label="Overall" value={`${benchmark.overall_index ?? 0}/100`} /><Metric label="CPU" value={`${benchmark.cpu_index ?? 0}/100`} /><Metric label="Memory" value={`${benchmark.memory_index ?? 0}/100`} /><Metric label="Storage" value={`${benchmark.storage_index ?? 0}/100`} /></div><p className="small-note">These are normalized comparisons based on catalogue data, not laboratory benchmarks.</p></section>
-        <section className="comparison-box"><h3>Evidence and limits</h3><p className="small-note">Evidence quality: <strong>{security.evidence_quality || catalogue.evidence_quality || 'unknown'}</strong> · Score version: {security.score_version || 'not supplied'}</p><ul>{(security.limitations || []).map((item, index) => <li key={index}>{item}</li>)}</ul>{catalogue.evidence_url && <a href={catalogue.evidence_url} target="_blank" rel="noreferrer noopener">View product evidence</a>}</section>
+        <section className="comparison-box"><h3>Performance at a glance</h3><div className="benchmark-grid"><Metric label="Overall" value={`${benchmark.overall_index ?? 0}/100`} /><Metric label="CPU" value={`${benchmark.cpu_index ?? 0}/100`} /><Metric label="Memory" value={`${benchmark.memory_index ?? 0}/100`} /><Metric label="Storage" value={`${benchmark.storage_index ?? 0}/100`} /></div><p className="small-note">Evidence state: {device.data_quality?.benchmark_state || 'unknown'}. These are normalized specification comparisons, not laboratory results.</p>{device.benchmark_evidence?.length ? <ul>{device.benchmark_evidence.slice(0, 3).map((item) => <li key={`${item.suite}-${item.tested_at}`}>{item.suite} {item.version || ''}: {item.score ?? 'unscored'} · {item.evidence_type}{item.source_url && <> · <a href={item.source_url} target="_blank" rel="noreferrer noopener">source</a></>}</li>)}</ul> : <p className="small-note">No independent benchmark record is attached to this device.</p>}</section>
+        <section className="comparison-box"><h3>Evidence and limits</h3><p className="small-note">Evidence quality: <strong>{security.evidence_quality || catalogue.evidence_quality || 'unknown'}</strong> · Score version: {security.score_version || 'not supplied'}</p><ul>{(security.limitations || []).map((item, index) => <li key={index}>{item}</li>)}</ul>{catalogue.evidence_url && <a href={catalogue.evidence_url} target="_blank" rel="noreferrer noopener">View product evidence</a>}{device.security_evidence?.length ? <ul>{device.security_evidence.slice(0, 4).map((item) => <li key={`${item.provider}-${item.cve_id}-${item.checked_at}`}>{item.cve_id || item.provider}: {item.summary || 'security evidence recorded'} · {item.confidence}</li>)}</ul> : <p className="small-note">No model-specific vulnerability evidence is attached yet; the score remains heuristic.</p>}</section>
         <section className="comparison-box"><h3>Support and ownership</h3><p className="small-note">Support until: {catalogue.support_until || 'not supplied'} · Warranty: {catalogue.warranty || 'not supplied'} · Image licence: {catalogue.image_license || 'not supplied'}</p></section>
-        <section className="comparison-box"><h3>Improve performance</h3>{tools.length ? <div className="tool-list">{tools.slice(0, 4).map((tool, index) => <a key={index} href={tool.url} target="_blank" rel="noreferrer noopener"><strong>{tool.name}</strong><span>{tool.description}</span></a>)}</div> : <p>Keep the operating system updated, remove unused software and leave enough free storage for updates.</p>}</section>
-        <section className="comparison-box"><h3>Where to compare prices</h3><p className="small-note">Prices and availability can change. Verify the final details before buying.</p><div className="retailer-list">{Object.entries(device.retailer_links || {}).slice(0, 6).map(([name, url]) => <a key={name} href={url} target="_blank" rel="noreferrer noopener">{name}</a>)}</div></section>
+        <section className="comparison-box"><h3>Improve performance</h3><p className="small-note">{device.experience?.summary || 'Keep the operating system updated and leave enough free storage for updates.'}</p>{device.experience?.strengths?.length ? <ul>{device.experience.strengths.map((item) => <li key={item}>{item}</li>)}</ul> : null}{device.experience?.tradeoffs?.length ? <p className="small-note"><strong>Plan for:</strong> {device.experience.tradeoffs.join(' · ')}</p> : null}{tools.length ? <div className="tool-list">{tools.slice(0, 4).map((tool, index) => <a key={index} href={tool.url} target="_blank" rel="noreferrer noopener"><strong>{tool.name}</strong><span>{tool.description}</span></a>)}</div> : null}</section>
+        <VendorOffers device={device} />
       </div>
     </div>
     <section className="comparison-box alternatives"><div className="section-heading"><div><h3>Similar choices</h3><p className="small-note">Compare nearby options with similar price and performance.</p></div><button className="secondary" onClick={onCompare}>Find alternatives</button></div>{comparisons.length ? <div className="mini-grid">{comparisons.map(item => <div className="mini-card" key={item.id}><strong>{item.name}</strong><span>£{item.price} · {item.security?.score}% security score</span></div>)}</div> : <p className="small-note">Choose “Find alternatives” to load comparisons.</p>}</section>
@@ -143,7 +173,8 @@ function App() {
   }, [])
   const update = (event) => setFilters({ ...filters, [event.target.name]: event.target.value })
   const sortedDevices = [...devices].sort((a, b) => {
-    return sort === 'price' ? a.price - b.price : sort === 'performance' ? (b.benchmark?.overall_index || 0) - (a.benchmark?.overall_index || 0) : (b.security?.score || 0) - (a.security?.score || 0)
+    const price = (device) => currentOffer(device)?.total_price ?? currentOffer(device)?.price ?? Number.POSITIVE_INFINITY
+    return sort === 'price' ? price(a) - price(b) : sort === 'performance' ? (b.benchmark?.overall_index || 0) - (a.benchmark?.overall_index || 0) : (b.security?.score || 0) - (a.security?.score || 0)
   })
   const select = async (id) => { setError(''); try { const payload = await fetchDevice(id, context); setSelected(payload.item); setComparisons([]) } catch (err) { setError(err.message) } }
   const compare = async () => { if (!selected) return; try { const payload = await fetchComparisons(selected.id, { category: 'same', price_range: 'similar', performance: 'similar', ...context }); setComparisons(payload.items || []) } catch (err) { setError(err.message) } }
@@ -151,7 +182,7 @@ function App() {
 
   return <div className="app-shell">
     <nav className="site-nav" aria-label="Primary navigation"><a className="brand" href="#top"><span className="brand-mark">✦</span><span><strong>Device Provisioning</strong><small>Toolkit by BStudioB</small></span></a><div className="nav-links"><a href="#search">Find a device</a><a href="#results">Recommendations</a><a href="#how-it-works">How it works</a></div><span className="pilot-badge">Invite-only pilot</span></nav>
-    <header id="top" className="hero"><div className="hero-copy"><div className="eyebrow">BStudioB · Safer device decisions</div><h1>Choose the right device with confidence.</h1><p>Compare products, understand the security trade-offs and get plain-English steps to make your device safer and faster.</p><div className="hero-actions"><button className="primary" onClick={() => document.getElementById('search')?.scrollIntoView({ behavior: 'smooth' })}>Start comparing <span>→</span></button><a className="text-link" href="#how-it-works">See how it works</a></div><div className="hero-proof"><span>✓ Reviewed catalogue</span><span>✓ Security-aware scoring</span><span>✓ Plain-English guidance</span></div></div><div className="hero-visual" aria-label="Toolkit overview"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="security-card"><div className="card-kicker">DECISION SNAPSHOT</div><div className="shield-icon">✓</div><strong>Security baseline</strong><div className="score-ring"><span>94</span><small>/100</small></div><p>Clear evidence, practical controls and no confusing jargon.</p><div className="mini-status"><span><i /> Reviewed source</span><span><i /> Support checked</span></div></div></div></header>
+    <header id="top" className="hero"><div className="hero-copy"><div className="eyebrow">BStudioB · Safer device decisions</div><h1>Choose the right device with confidence.</h1><p>Compare products, understand the security trade-offs and get plain-English steps to make your device safer and faster.</p><div className="hero-actions"><button className="primary" onClick={() => document.getElementById('search')?.scrollIntoView({ behavior: 'smooth' })}>Start comparing <span>→</span></button><a className="text-link" href="#how-it-works">See how it works</a></div><div className="hero-proof"><span>✓ Evidence-labelled results</span><span>✓ Security-aware scoring</span><span>✓ Plain-English guidance</span></div></div><div className="hero-visual" aria-label="Toolkit overview"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="security-card"><div className="card-kicker">CATALOGUE STATUS</div><div className="shield-icon">✓</div><strong>{catalogueStateLabel(catalogueStatus)}</strong><div className="score-ring"><span>{catalogueStatus?.product_count ?? '—'}</span><small>products</small></div><p>Scores explain what is known, what is estimated and what still needs checking.</p><div className="mini-status"><span><i /> {catalogueStatus?.current_offer_count ?? 0} current offers</span><span><i /> {catalogueStatus?.benchmark_coverage ?? 0} benchmark records</span></div></div></div></header>
     <main>
       <section id="how-it-works" className="intent-section"><div className="section-intro"><span className="eyebrow">Start with your situation</span><h2>One toolkit. Three ways to choose.</h2><p className="muted">Your context changes what “best” means. Pick a starting point and we’ll shape the recommendation around it.</p></div><div className="intent-grid"><button className={`intent-card ${filters.use_case === 'Personal' ? 'selected' : ''}`} onClick={() => chooseUseCase('Personal')}><span className="intent-icon">⌂</span><span><strong>Home & personal</strong><small>Everyday use, study and family devices</small></span><b>→</b></button><button className={`intent-card ${filters.use_case === 'Work' ? 'selected' : ''}`} onClick={() => chooseUseCase('Work')}><span className="intent-icon">▦</span><span><strong>Small business</strong><small>Work-ready devices with a safer baseline</small></span><b>→</b></button><button className={`intent-card ${filters.use_case === 'Government' ? 'selected' : ''}`} onClick={() => chooseUseCase('Government')}><span className="intent-icon">◇</span><span><strong>Public sector</strong><small>Exploratory comparisons for higher assurance needs</small></span><b>→</b></button></div></section>
       <section id="search" className="search-panel"><div><span className="eyebrow">01 · Find a device</span><h2>Tell us what you need</h2><p className="muted">Start with your situation. The service uses this context when explaining security and suitability.</p></div>
@@ -170,7 +201,8 @@ function App() {
         </form>
       </section>
       {error && <div className="notice error" role="alert">{error}</div>}
-      <section id="results" className="results"><div className="section-heading"><div><span className="eyebrow">02 · Shortlist</span><h2>{filters.query ? 'Search results' : 'Reviewed devices'}</h2><p className="muted">For {filters.use_case === 'Work' ? 'business' : filters.use_case.toLowerCase()} use · {total} devices found</p></div><div className="result-controls"><span className="catalogue-chip"><i /> {catalogueStatus?.live_scraping ? 'Live provider data' : 'Reviewed catalogue'}</span><label>Sort<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="security">Security first</option><option value="performance">Performance first</option><option value="price">Lowest price</option></select></label></div></div>
+      <section id="results" className="results"><div className="section-heading"><div><span className="eyebrow">02 · Shortlist</span><h2>{filters.query ? 'Search results' : 'Reviewed devices'}</h2><p className="muted">For {filters.use_case === 'Work' ? 'business' : filters.use_case.toLowerCase()} use · {total} devices found</p></div><div className="result-controls"><span className="catalogue-chip"><i /> {catalogueStateLabel(catalogueStatus)}</span><label>Sort<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="security">Security first</option><option value="performance">Performance first</option><option value="price">Lowest verified price</option></select></label></div></div>
+        {catalogueStatus && ['empty', 'unavailable', 'stale'].includes(catalogueStatus.catalogue_state) && <div className="notice warning"><strong>{catalogueStateLabel(catalogueStatus)}.</strong> This interface will not invent prices, benchmark results or product photographs. An approved feed must be loaded before the service can make live recommendations.</div>}
         {loading ? <div className="notice">Loading the reviewed catalogue…</div> : sortedDevices.length ? <div className="device-grid">{sortedDevices.map(device => <DeviceCard key={device.id} device={device} onSelect={select} />)}</div> : <div className="notice">No devices matched these choices. Try increasing the budget or removing one filter.</div>}
       </section>
       {selected && <DeviceDetail device={selected} comparisons={comparisons} context={context} onCompare={compare} onClose={() => setSelected(null)} />}

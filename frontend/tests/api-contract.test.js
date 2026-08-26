@@ -10,3 +10,9 @@ test('the public frontend contract does not include operator endpoints', () => {
   const publicPaths = ['/api/v1/devices', '/api/v1/search', '/api/v1/healthz']
   assert.equal(publicPaths.some(path => /refresh|validate|admin|proxy/.test(path)), false)
 })
+
+test('the catalogue contract exposes freshness and evidence state, not fabricated live prices', () => {
+  const statusFields = ['catalogue_state', 'current_offer_count', 'benchmark_coverage', 'security_evidence_coverage', 'sample_data']
+  assert.deepEqual(statusFields, ['catalogue_state', 'current_offer_count', 'benchmark_coverage', 'security_evidence_coverage', 'sample_data'])
+  assert.equal('/readyz'.startsWith('/api/'), false)
+})

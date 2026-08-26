@@ -5,6 +5,11 @@
   "products": [
     {
       "name": "Example Business Laptop 14",
+      "brand": "Example",
+      "model": "Business Laptop 14",
+      "variant": "16GB/512GB",
+      "mpn": "EXAMPLE-BL14-16512",
+      "region": "GB",
       "category": "Laptops",
       "cpu_speed": 3.4,
       "ram": 16,
@@ -18,7 +23,23 @@
       "warranty": "Example two-year manufacturer warranty",
       "image_license": "Approved provider image licence",
       "evidence_url": "https://feed-provider.example/catalogue/example-business-laptop-14",
-      "evidence_quality": "reviewed"
+      "evidence_quality": "reviewed",
+      "source_state": "reviewed",
+      "confidence": "medium",
+      "offers": [
+        {
+          "vendor": "Approved vendor feed",
+          "url": "https://vendor.example/product/example-business-laptop-14",
+          "price": 899,
+          "item_price": 899,
+          "total_price": 899,
+          "currency": "GBP",
+          "availability": "in_stock",
+          "checked_at": "2026-08-19T00:00:00+00:00",
+          "expires_at": "2026-08-20T00:00:00+00:00",
+          "source_url": "https://vendor.example/product/example-business-laptop-14"
+        }
+      ]
     }
   ]
 }

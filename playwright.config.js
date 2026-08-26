@@ -20,7 +20,7 @@ module.exports = defineConfig({
     }
   ],
   webServer: {
-    command: 'DATABASE_PATH=/tmp/device-provisioning-toolkit-e2e.db PORT=8012 SERVE_FRONTEND_AT_ROOT=true python app.py',
+    command: 'DATABASE_PATH=/tmp/device-provisioning-toolkit-e2e.db ALLOW_SAMPLE_DATA=true PORT=8012 SERVE_FRONTEND_AT_ROOT=true python app.py',
     port: 8012,
     timeout: 120_000,
     reuseExistingServer: true

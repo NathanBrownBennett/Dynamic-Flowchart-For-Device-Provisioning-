@@ -17,7 +17,8 @@ browser -> Flask route -> SQLite catalogue -> rule/scoring engine -> Jinja templ
                                       \-> Graphviz SVG for device detail pages
 ```
 
-The React/Vite migration uses this boundary:
+The React/Vite migration uses this boundary (served at `/` in the current
+Render configuration, with `/app/` retained as a compatibility path):
 
 ```text
 browser -> /app/ React bundle -> /api/v1/* Flask contract -> existing rule engine/SQLite
@@ -28,8 +29,10 @@ browser -> /app/ React bundle -> /api/v1/* Flask contract -> existing rule engin
 
 The frontend only relies on these read-oriented endpoints:
 
-- `GET /api/v1/healthz` → `{status, service, api_version}`.
-- `GET /api/v1/catalogue/status` → product count plus source/freshness summaries.
+- `GET /api/v1/healthz` → liveness plus non-sensitive catalogue state.
+- `GET /readyz` → database/data readiness for a hosting probe.
+- `GET /api/v1/catalogue/status` → product/offer/evidence coverage plus
+  source/freshness summaries and provider descriptors.
 - `GET /api/v1/criteria` → bounded, data-backed categories, brands, operating
   systems, use cases and business-role choices.
 - `GET /api/v1/sources/{source}/status` → coarse source freshness status only.
@@ -44,16 +47,24 @@ The frontend only relies on these read-oriented endpoints:
   validates and atomically replaces the pilot catalogue.
 
 Device items retain the existing rule-engine shape, including security score,
-recommendations, operating-system inference and retailer links. The public
-contract does not expose operator tokens or mutation endpoints.
+transparent score factors, performance benchmark indices, OS and hardware
+ratings, plain-English experience comments, hardening/performance actions and
+vendor links/offers. Explicit vendor offers are sorted by verified total-known
+price and carry provider, check/expiry timestamps. The public contract does not expose
+operator tokens or mutation endpoints.
 Each item also exposes catalogue source, retrieval, expiry, support, warranty,
 image-licence, evidence-quality and availability fields. Security responses
 expose the selected recommendation context, score version, evidence quality,
 score factors and limitations.
 
-Live retailer requests are a separate, disabled-by-default path. If explicitly
-enabled, bounded retailer requests populate in-process caches and are never a
-replacement for a reviewed production provider integration.
+Live retailer requests are disabled. The local fixture contains product-shaped
+records for deterministic development but is hidden by the production default;
+it is not a live price feed. Missing vendor offers are shown as “price not
+currently verified”, never invented or ranked. A permitted provider/API feed
+must populate `device_offers` before the service can claim current vendor
+pricing. Provider contracts and run bookkeeping live under `integrations/`;
+adapters return not-configured until approval and host-side credential
+injection.
 
 ## Route boundary
 
@@ -62,7 +73,7 @@ replacement for a reviewed production provider integration.
 | `GET /`, `/device/<id>`, `/resources`, `/flowchart/*` | Read-only catalogue, guidance and generated/static assets | Suitable for an invite-only pilot after normal web QA |
 | `GET /healthz` | Liveness probe | Publicly safe; returns no catalogue or secret data |
 | `POST /compare-devices`, `/generate-hardening-script` | Stateless user operations | Rate-limited in-process; add proxy/API limits in hosting |
-| `POST /search-live`, `/get-current-price` | Optional provider access | Disabled unless `ENABLE_LIVE_SCRAPING=true`; terms and rate-limit review required |
+| `POST /search-live`, `/get-current-price` | Optional provider access | Disabled; approved provider adapters are required and legacy scraping is not a production fallback |
 | `POST /refresh-devices`, `/async-refresh`, `/validate-links` | Catalogue refresh/validation | Bearer operator gate; keep private until session auth, CSRF, audit logging and role checks exist |
 | `GET /api/image-proxy` | Image compatibility proxy | HTTPS exact-host allowlist, public-DNS check, no redirects, content-type and 5 MiB limit |
 

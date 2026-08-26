@@ -25,8 +25,13 @@ The eventual API should expose only the minimum public operations:
 - `GET /api/v1/healthz` — liveness/readiness without secrets or catalogue data.
 - `GET /api/v1/criteria` — bounded choices for the guided workflow.
 - `GET /api/v1/sources/{source}/status` — coarse source freshness only.
-- `GET /api/v1/devices` — bounded, paginated catalogue results.
+- `GET /api/v1/devices` — bounded, paginated catalogue results with
+  transparent security/performance/OS/hardware ratings and plain-English
+  experience comments.
 - `GET /api/v1/devices/{id}` — one reviewed device record for an explicit use case.
+- Each device may expose `offers`, sorted by verified price, plus vendor search
+  links when no approved live offer feed is attached. Search links are not
+  represented as live prices.
 - `POST /api/v1/search` — validated query/filter input with rate limits.
 - `GET /api/v1/sources/{source}/status` — coarse provider freshness only.
 

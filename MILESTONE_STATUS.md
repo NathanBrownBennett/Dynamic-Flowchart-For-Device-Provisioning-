@@ -1,6 +1,6 @@
 # Milestone status and founder handoff
 
-Date: 2026-08-25
+Date: 2026-08-26
 
 ## Completed locally
 
@@ -60,6 +60,18 @@ Date: 2026-08-25
   product identity: branded navigation, clearer hero hierarchy, decision
   snapshot, use-case cards, trust signals, responsive catalogue cards and a
   cleaner review surface. API and security boundaries are unchanged.
+- The catalogue decision model now exposes transparent v2 score factors,
+  security/OS/hardware/performance ratings, plain-English experience comments,
+  and per-device hardening and performance guidance. Results are ordered by
+  security score first, then performance, with price as a later tie-breaker.
+- The validated catalogue feed now supports bounded `device_offers` records.
+  Offers are HTTPS-only, retain check/expiry/source metadata, and are returned
+  cheapest first with unknown prices last. The existing 34 CSV-backed records
+  have real product names and specifications, but they do not have current
+  approved vendor offers attached.
+- When no approved offer feed is present, the UI shows vendor search links as
+  unverified links and explicitly says that no live price has been supplied;
+  it does not present demo prices or pretend that a search link is a quote.
 
 ## Render staging evidence (2026-08-20)
 
@@ -74,8 +86,8 @@ Date: 2026-08-25
 
 ## Verification completed
 
-- Backend unit/security suite: 8 tests passed.
-- Frontend API contract suite: 2 tests passed.
+- Backend unit/security suite: 11 tests passed.
+- Frontend API contract suite: 3 tests passed.
 - Vite production build: passed.
 - Python compilation for the application, WSGI entrypoint and catalogue CLI:
   passed.
@@ -116,9 +128,46 @@ following external decisions:
    worker, backups, logs, metrics and alerting.
 6. Confirmation of the intended licence/IP arrangement for public or
    third-party hosting.
+7. Approval of one or more permitted product/price providers, including API or
+   affiliate terms, attribution, refresh cadence, currency/tax/delivery
+   treatment and the credentials/worker arrangement needed to populate
+   `device_offers`. Until this is approved and populated, current vendor price
+   comparison is not complete.
 
 No DNS, hosting account, provider integration, credential, payment, legal
 acceptance or public deployment has been made by this work.
+
+## Full-completion implementation pass (2026-08-26)
+
+Implemented locally:
+
+- Production defaults no longer bootstrap CSV, scraper or fallback data. The
+  opt-in `ALLOW_SAMPLE_DATA=true` path is explicitly labelled as a local
+  fixture; the default API returns an empty/unavailable catalogue until an
+  approved feed is imported.
+- Added `/readyz`, catalogue state (`empty`, `unavailable`, `sample`, `stale`,
+  `partial`, `current`), current-offer counts, evidence coverage and provider
+  descriptors to the versioned API.
+- Added additive SQLite migrations for canonical product identity, provider
+  offers, benchmark evidence, security evidence, support lifecycle and provider
+  run records. Expired offers are excluded from current ranking and known
+  total cost is the primary offer sort key.
+- Added disabled-by-default provider contracts and worker boundaries for
+  Icecat, affiliate/marketplace feeds, vulnerability evidence, manufacturer
+  advisories and benchmark sources. No network adapter or credential value was
+  added.
+- React now labels evidence/freshness state, removes the hard-coded hero score,
+  avoids showing catalogue prices as live prices, displays current vendor
+  offers by total-known price, and calls out incomplete delivery data and
+  affiliate/sponsored disclosures.
+- Added `PROVIDER_INTEGRATION_PLAN.md`, `DATA_PROVENANCE_AND_SCORING.md` and
+  `LIVE_CATALOGUE_OPERATIONS.md`; updated the architecture and environment
+  contract.
+
+Remaining blockers are external: provider terms/API approvals and credentials,
+real permitted catalogue and offer data, managed durable storage, operator
+authentication/roles, monitoring/backups, and hosted verification. The local
+implementation is not production-ready and has not been deployed.
 
 ## Recommended next sequence after approval
 
@@ -139,3 +188,6 @@ deployed.
 4. Select and migrate from SQLite before multi-worker production traffic.
 5. Deploy the static showcase separately and only then consider a staged
    interactive subdomain rollout.
+6. Import a reviewed live catalogue with vendor offers, verify freshness and
+   stale-price behavior, then re-run the hosted browser and API acceptance
+   checks before widening access.

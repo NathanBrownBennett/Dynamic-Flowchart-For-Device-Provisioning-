@@ -129,6 +129,29 @@ li { margin: 9px 0; color: #5f6f84; font-size: .84rem; line-height: 1.45; }
 .mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .mini-card { display: grid; gap: 4px; padding: 13px; border: 1px solid #e0e7f0; border-radius: 11px; background: #fff; }
 .mini-card span { color: #77859a; font-size: .76rem; }
+.rating-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 17px 0 10px; }
+.rating-strip span { padding: 10px; color: #748299; border-radius: 10px; background: #f1f6fd; font-size: .7rem; font-weight: 700; }
+.rating-strip strong { display: block; margin-top: 3px; color: var(--blue); font-size: 1.1rem; }
+.factor-list { display: grid; gap: 10px; }
+.factor-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid #e7edf4; }
+.factor-row:last-child { padding-bottom: 0; border-bottom: 0; }
+.factor-row strong, .factor-row small { display: block; }
+.factor-row strong { color: var(--ink); font-size: .8rem; }
+.factor-row small { max-width: 340px; margin-top: 3px; color: #7d8ba0; font-size: .72rem; line-height: 1.4; }
+.factor-row b { color: #2e9a6a; font-size: .85rem; white-space: nowrap; }
+.factor-row b.negative { color: #c75b63; }
+.vendor-box .section-heading { align-items: center; margin-bottom: 14px; }
+.offer-count { padding: 6px 9px; color: #2b7b61; border-radius: 999px; background: #e7f7ef; font-size: .7rem; font-weight: 800; }
+.offer-list { display: grid; gap: 8px; }
+.offer-row { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 10px; padding: 11px; color: var(--ink); border: 1px solid #e0e7f0; border-radius: 11px; background: #fff; text-decoration: none; }
+.offer-row:hover { border-color: #8eb2ed; background: #f8fbff; }
+.offer-rank { display: grid; width: 22px; height: 22px; place-items: center; color: #4771ad; border-radius: 50%; background: #eaf2ff; font-size: .7rem; font-weight: 800; }
+.offer-vendor strong, .offer-vendor small { display: block; }
+.offer-vendor strong { font-size: .8rem; }
+.offer-vendor small { margin-top: 3px; color: #7a899f; font-size: .69rem; }
+.offer-price { color: #1e5ec3; font-size: .84rem; white-space: nowrap; }
+.offer-price span { margin-left: 4px; font-size: .9rem; }
+.vendor-warning { margin: 13px 0 0; color: #a36d25; }
 footer { padding: 16px 0 38px; color: #8793a5; font-size: .78rem; }
 footer p { margin: 5px 0; }
 @media (max-width: 940px) { .hero { padding: 58px 45px; } .hero h1 { font-size: clamp(3rem, 8vw, 5rem); } .device-grid { grid-template-columns: repeat(2, 1fr); } .search-panel form { grid-template-columns: repeat(2, 1fr); } }
