@@ -410,6 +410,18 @@ class DeviceDataScraper:
         if storage_match:
             amount = float(storage_match.group(1))
             storage = int(amount * 1000 if storage_match.group(2) == 'tb' else amount)
+        elif not use_defaults:
+            explicit_capacities = []
+            for capacity in re.finditer(r'(\d+(?:\.\d+)?)\s*(tb|gb)\b', text_lower):
+                suffix = text_lower[capacity.end():capacity.end() + 12].lstrip(' ,|:-')
+                if suffix.startswith(('ram', 'memory')):
+                    continue
+                amount = float(capacity.group(1))
+                gigabytes = int(amount * 1000 if capacity.group(2) == 'tb' else amount)
+                if gigabytes >= 32:
+                    explicit_capacities.append(gigabytes)
+            if explicit_capacities:
+                storage = max(explicit_capacities)
         
         # Screen Size
         screen_size = 13.0 if use_defaults else 0.0

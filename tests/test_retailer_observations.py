@@ -32,6 +32,12 @@ class RetailerObservationTests(unittest.TestCase):
         self.assertEqual(john_lewis_item['price'], 699.0)
         self.assertEqual(john_lewis_item['product_url'], 'https://www.johnlewis.com/apple-test-laptop/p12345')
         self.assertEqual(john_lewis_item['image_url'], None)
+        self.assertEqual(scraper.extract_specs_from_text(
+            'Apple Mac mini, 16GB RAM, 1TB, Silver', use_defaults=False
+        )[2], 1000)
+        self.assertEqual(scraper.extract_specs_from_text(
+            'Lenovo Tablet, 8GB RAM, 256GB, 11”', use_defaults=False
+        )[2], 256)
 
 if __name__ == '__main__':
     unittest.main()

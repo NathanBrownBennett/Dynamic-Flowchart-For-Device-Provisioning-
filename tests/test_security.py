@@ -286,6 +286,7 @@ class SecurityBoundaryTests(unittest.TestCase):
             self.assertEqual(item['catalogue']['source_state'], 'observed')
             self.assertEqual(item['data_quality']['price_state'], 'observed')
             self.assertEqual([offer['total_price'] for offer in item['offers']], [699.0, 799.0])
+            self.assertTrue(all(not offer['total_price_complete'] for offer in item['offers']))
             cached_search = client.post('/search-live', json={'query': 'Test Laptop', 'max_results': 10})
             self.assertEqual(cached_search.status_code, 200)
             self.assertEqual(cached_search.json['total_found'], 1)

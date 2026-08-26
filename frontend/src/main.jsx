@@ -53,6 +53,10 @@ function currentOffer(device) {
   return (device.offers || []).find((offer) => offer.total_price != null || offer.price != null)
 }
 
+function specValue(value, unit, unknownLabel) {
+  return Number(value) > 0 ? `${value} ${unit}` : unknownLabel
+}
+
 function catalogueStateLabel(status) {
   if (status?.catalogue_state === 'current' && status?.catalogue_mode === 'retailer_observation') return 'Current retailer observations'
   const labels = { current: 'Current provider feed', partial: 'Catalogue current · prices incomplete', sample: 'Local fixture mode', stale: 'Catalogue needs refresh', unavailable: 'Live catalogue unavailable', empty: 'No live catalogue loaded' }
@@ -81,7 +85,7 @@ function DeviceCard({ device, onSelect }) {
       <div><span className="eyebrow">{device.category}</span><h3>{device.name}</h3></div>
       <span className={`score score-${level.toLowerCase()}`}>{score}%</span>
     </div>
-    <p className="muted">{device.os} · {device.ram} GB RAM · {device.storage} GB storage</p>
+    <p className="muted">{device.os} · {specValue(device.ram, 'GB RAM', 'RAM not listed')} · {specValue(device.storage, 'GB storage', 'Storage not listed')}</p>
     <p className="plain-score"><strong>{level} security baseline.</strong> {scoreCopy(level, score)}</p>
     <p className="small-note">{device.catalogue?.source || 'Source unavailable'} · {freshnessLabel(device.catalogue)}</p>
     <div className="card-footer"><strong>{offer ? formatPrice(offer) : 'Price not currently verified'}</strong><button onClick={() => onSelect(device.id)}>Review device</button></div>
@@ -109,7 +113,7 @@ function DeviceDetail({ device, comparisons, context, detailTab, onTabChange, on
       `Context: ${context.use_case}${context.work_profile ? ` · ${context.work_profile}` : ''}`,
       `Security: ${security.score ?? 0}% · ${security.level || 'Unrated'}`,
       `Performance index: ${benchmark.overall_index ?? 0}/100`,
-      `Lowest verified total price: ${currentOffer(device) ? formatPrice(currentOffer(device)) : 'not currently verified'}`,
+      `Lowest observed price: ${currentOffer(device) ? formatPrice(currentOffer(device)) : 'not currently observed'}`,
       `Catalogue source: ${catalogue.source || 'unknown'}`, `Retrieved: ${catalogue.retrieved_at || 'unknown'}`, `Expires: ${catalogue.expires_at || 'unknown'}`,
       '', 'Limitations:', ...(security.limitations || ['Heuristic comparison only.']), '', 'Review the source and organisation requirements before purchase or deployment.',
     ].join('\n')
@@ -121,7 +125,7 @@ function DeviceDetail({ device, comparisons, context, detailTab, onTabChange, on
     <div className="back-row"><button className="back-button" onClick={onBack}>← Back to recommendations</button><span className="eyebrow">Device review</span></div>
     <div className="detail-title"><div><h1 id="device-review-heading">{device.name}</h1><p className="lead">{device.os} · {device.cpu_vendor} · {device.category}</p></div><button className="secondary" onClick={downloadSummary}>Download summary</button></div>
     <div className="context-row"><div className="context-pill">Recommendation for: <strong>{context.use_case === 'Work' ? 'Business' : context.use_case}</strong>{context.work_profile && context.use_case === 'Work' ? ` · ${context.work_profile.replaceAll('_', ' ')}` : ''}</div><span className="freshness-note">{catalogue.source || 'Source unavailable'} · {freshnessLabel(catalogue)}</span></div>
-    <div className="metric-row"><Metric label="Security score" value={`${security.score ?? 0}% · ${security.level || 'Unrated'}`} /><Metric label="Lowest verified total" value={currentOffer(device) ? formatPrice(currentOffer(device)) : 'Not verified'} /><Metric label="Memory" value={`${device.ram} GB`} /><Metric label="Storage" value={`${device.storage} GB`} /></div>
+    <div className="metric-row"><Metric label="Security score" value={`${security.score ?? 0}% · ${security.level || 'Unrated'}`} /><Metric label="Lowest observed price" value={currentOffer(device) ? formatPrice(currentOffer(device)) : 'Not observed'} /><Metric label="Memory" value={specValue(device.ram, 'GB', 'Not listed')} /><Metric label="Storage" value={specValue(device.storage, 'GB', 'Not listed')} /></div>
     <DetailTabs active={detailTab} onChange={onTabChange} />
     <div className="detail-content">
       {detailTab === 'overview' && <div className="detail-column overview-column">
@@ -137,7 +141,7 @@ function DeviceDetail({ device, comparisons, context, detailTab, onTabChange, on
 }
 
 function Guide() {
-  return <section className="guide-view"><div className="view-heading"><span className="eyebrow">How the toolkit works</span><h1>Simple decisions, clearly explained.</h1><p className="lead">The toolkit helps you narrow a device choice, then shows what is known, what is estimated and what you should do next.</p></div><div className="guide-grid"><article><span className="guide-number">1</span><h2>Choose your situation</h2><p>Home, business or public-sector use changes the risks and priorities. Start with the situation that best matches the device.</p></article><article><span className="guide-number">2</span><h2>Compare the shortlist</h2><p>Devices are ranked by your chosen priority. Scores are comparison aids, not security certification or a promise of perfect performance.</p></article><article><span className="guide-number">3</span><h2>Review the evidence</h2><p>Open a device to see the OS, hardware, performance and security breakdown in plain English, with dates and limitations.</p></article><article><span className="guide-number">4</span><h2>Harden before use</h2><p>Follow the first-step settings, update, encryption and account-safety guidance before connecting the device to important data.</p></article></div><div className="notice guide-note"><strong>About live data.</strong> Prices, availability, benchmarks and vulnerability evidence only appear when an approved source supplies them. The pilot does not invent missing facts.</div></section>
+  return <section className="guide-view"><div className="view-heading"><span className="eyebrow">How the toolkit works</span><h1>Simple decisions, clearly explained.</h1><p className="lead">The toolkit helps you narrow a device choice, then shows what is known, what is estimated and what you should do next.</p></div><div className="guide-grid"><article><span className="guide-number">1</span><h2>Choose your situation</h2><p>Home, business or public-sector use changes the risks and priorities. Start with the situation that best matches the device.</p></article><article><span className="guide-number">2</span><h2>Compare the shortlist</h2><p>Devices are ranked by your chosen priority. Scores are comparison aids, not security certification or a promise of perfect performance.</p></article><article><span className="guide-number">3</span><h2>Review the evidence</h2><p>Open a device to see the OS, hardware, performance and security breakdown in plain English, with dates and limitations.</p></article><article><span className="guide-number">4</span><h2>Harden before use</h2><p>Follow the first-step settings, update, encryption and account-safety guidance before connecting the device to important data.</p></article></div><div className="notice guide-note"><strong>About live data.</strong> Prices and availability appear from configured retailer observations or approved feeds. Benchmarks and vulnerability evidence only appear when sourced. The pilot does not invent missing facts.</div></section>
 }
 
 function App() {
