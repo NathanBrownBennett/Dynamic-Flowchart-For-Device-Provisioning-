@@ -8,21 +8,22 @@ auditable by a business or public-sector reviewer.
 - `measured`: produced by a controlled test with a recorded configuration.
 - `independent_published`: published by an independent benchmark or authority.
 - `vendor_claimed`: supplied by a manufacturer or seller and labelled as such.
-- `specification_estimate`: derived from supplied hardware specifications; this
-  is the current local heuristic benchmark state.
+- `specification_estimate`: derived from supplied hardware specifications. It
+  is allowed only in local fixtures and is never displayed as a live benchmark.
 - `unknown`: no defensible evidence is attached.
 
-The current security and performance numbers are comparison heuristics. They
-are not certifications, penetration tests, warranty promises, patch-SLA
-guarantees or a claim that a CPU family is currently vulnerable. Model-specific
-vulnerability evidence must include a source, timestamp, matching identifier
-and confidence.
+Live security ratings are withheld unless the exact OS, model-specific security
+evidence and support lifecycle are all present. Live performance ratings are
+withheld unless a measured or independently published benchmark includes a
+source, timestamp and normalized score. Retailer titles, brand names and raw
+RAM/storage capacity cannot create either rating. Any displayed rating remains
+a comparison aid, not certification, penetration-test evidence or a patch SLA.
 
 ## Ranking precedence
 
 1. Eligibility for the selected context.
-2. Security score and explicit security evidence quality.
-3. Performance evidence and normalized capability.
+2. Rated security evidence; unrated products sort after rated products.
+3. Sourced performance evidence; unrated products sort after rated products.
 4. Verified current total-known offer price.
 5. Stable model-name tie-breaker.
 

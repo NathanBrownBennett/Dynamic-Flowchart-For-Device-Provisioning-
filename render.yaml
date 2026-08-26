@@ -24,6 +24,8 @@ services:
         value: "laptop,tablet,desktop computer"
       - key: RETAILER_RESULT_LIMIT
         value: "8"
+      - key: RETAILER_MIN_REFRESH_RATIO
+        value: "0.5"
       - key: RETAILER_OBSERVATION_TTL_HOURS
         value: "12"
       - key: RETAILER_REFRESH_INTERVAL_MINUTES
@@ -36,6 +38,8 @@ services:
         value: "30"
       - key: PUBLIC_RATE_WINDOW
         value: "60"
+      - key: TRUST_PROXY_HEADERS
+        value: "true"
       - key: MAX_CONTENT_LENGTH
         value: "32768"
       - key: IMAGE_PROXY_MAX_BYTES

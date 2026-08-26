@@ -15,7 +15,8 @@ false; when no approved feed is present, the public API reports `empty` or
 
 - Product catalogue default TTL: 168 hours.
 - Offer default TTL: 48 hours.
-- Provider responses must include a checked time and explicit expiry.
+- Missing expiries are bounded to the configured TTL; malformed, timezone-free,
+  reversed or excessively long freshness windows are rejected.
 - Failed provider runs do not fabricate replacement data.
 - Last-known records are hidden from current ranking after expiry.
 - `provider_runs` records status, count and a bounded error summary without
@@ -31,6 +32,9 @@ price routes read the cached database and never trigger an outbound request.
 The collector accepts no user-supplied URL, follows no redirects, enforces
 timeouts and a response-size ceiling, limits search terms and results, stores
 no retailer images, and preserves the previous catalogue when a run fails.
+It also preserves the previous catalogue when a refresh returns less than the
+configured `RETAILER_MIN_REFRESH_RATIO`, preventing a partial retailer response
+from replacing a fuller last-known catalogue.
 Every record is labelled `observed`, low confidence and unofficial, with a
 verify-before-purchase warning. Currys is not collected because its pages reject
 the bounded request; no bypass is attempted.

@@ -5,20 +5,21 @@ Docker is optional. The application can run as a normal Python WSGI service:
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -r requirements-hosting.txt
+pip install -r requirements.txt
 python app.py
 ```
 
 For a hosted process, use the included `Procfile` or the equivalent command:
 
 ```sh
-gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 wsgi:app
+gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 wsgi:app
 ```
 
 The host must provide Python 3.10+, SQLite storage, and either the Graphviz
 system binary or no Graphviz at all—the app now generates a readable SVG
 fallback when Graphviz is unavailable. Use a persistent writable data path for
-`DATABASE_PATH` during a pilot.
+`DATABASE_PATH` during a pilot. Keep one worker while SQLite is in use; move to
+managed PostgreSQL before scaling to multiple workers or instances.
 
 ## Subdomain shape
 

@@ -23,7 +23,7 @@ test.describe('Device Provisioning Toolkit - interactive pilot', () => {
     await page.getByLabel('What matters most?').selectOption('security');
     await page.getByRole('button', { name: /Show recommendations/i }).click();
 
-    await expect(page.getByRole('heading', { name: /Reviewed devices/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Current catalogue/i })).toBeVisible();
     await expect(page.locator('.device-card').first()).toBeVisible();
     await expect(page.locator('.score').first()).toContainText('%');
   });
@@ -73,9 +73,9 @@ test.describe('Device Provisioning Toolkit - interactive pilot', () => {
     expect(json.error).toBe('operator action is disabled');
   });
 
-  test('invite-only pilot wording is visible in the application footer', async ({ page }) => {
+  test('public pilot wording is visible in the application footer', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('footer').getByText(/invite-only pilot/i)).toBeVisible();
-    await expect(page.getByText(/no public account or sign-up data/i)).toBeVisible();
+    await expect(page.locator('footer').getByText(/public pilot/i)).toBeVisible();
+    await expect(page.getByText(/no account, sign-up or personal data/i)).toBeVisible();
   });
 });

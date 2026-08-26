@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, Response, abort
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, Response, abort, redirect
 import os
 import sqlite3
 import html
@@ -8,6 +8,7 @@ try:
 except ImportError:  # Graphviz is optional; the SVG fallback keeps WSGI hosting viable.
     graphviz = None
 import random
+import math
 import threading
 import requests
 from device_scraper import DeviceDataScraper, FALLBACK_DEVICE_DATA
@@ -18,6 +19,7 @@ import hmac
 import ipaddress
 import socket
 from urllib.parse import urlparse
+from werkzeug.middleware.proxy_fix import ProxyFix
 from integrations.providers import provider_descriptors
 from integrations.worker import run_provider
 
@@ -38,27 +40,35 @@ app.config.update(
     ALLOW_SAMPLE_DATA=_env_bool('ALLOW_SAMPLE_DATA'),
     LIVE_DATA_REQUIRED=_env_bool('LIVE_DATA_REQUIRED'),
     PROVIDER_SYNC_ENABLED=_env_bool('PROVIDER_SYNC_ENABLED'),
-    CATALOGUE_TTL_HOURS=int(os.environ.get('CATALOGUE_TTL_HOURS', '168')),
-    OFFER_TTL_HOURS=int(os.environ.get('OFFER_TTL_HOURS', '48')),
+    CATALOGUE_TTL_HOURS=max(1, min(int(os.environ.get('CATALOGUE_TTL_HOURS', '168')), 744)),
+    OFFER_TTL_HOURS=max(1, min(int(os.environ.get('OFFER_TTL_HOURS', '48')), 168)),
     RETAILER_SEARCH_TERMS=os.environ.get('RETAILER_SEARCH_TERMS', 'laptop,tablet,desktop computer'),
     RETAILER_RESULT_LIMIT=max(1, min(int(os.environ.get('RETAILER_RESULT_LIMIT', '8')), 20)),
     RETAILER_OBSERVATION_TTL_HOURS=max(1, min(int(os.environ.get('RETAILER_OBSERVATION_TTL_HOURS', '12')), 48)),
     RETAILER_REFRESH_INTERVAL_MINUTES=max(15, min(int(os.environ.get('RETAILER_REFRESH_INTERVAL_MINUTES', '360')), 1440)),
+    RETAILER_MIN_REFRESH_RATIO=max(0.1, min(float(os.environ.get('RETAILER_MIN_REFRESH_RATIO', '0.5')), 1.0)),
     DATABASE_PATH=os.environ.get('DATABASE_PATH', os.path.join(app.root_path, 'devices.db')),
-    IMAGE_PROXY_MAX_BYTES=int(os.environ.get('IMAGE_PROXY_MAX_BYTES', '5242880')),
-    PUBLIC_RATE_LIMIT=int(os.environ.get('PUBLIC_RATE_LIMIT', '30')),
-    PUBLIC_RATE_WINDOW=int(os.environ.get('PUBLIC_RATE_WINDOW', '60')),
+    IMAGE_PROXY_MAX_BYTES=max(65536, min(int(os.environ.get('IMAGE_PROXY_MAX_BYTES', '5242880')), 10485760)),
+    PUBLIC_RATE_LIMIT=max(1, min(int(os.environ.get('PUBLIC_RATE_LIMIT', '30')), 1000)),
+    PUBLIC_RATE_WINDOW=max(1, min(int(os.environ.get('PUBLIC_RATE_WINDOW', '60')), 3600)),
     FRONTEND_DIST=os.environ.get('FRONTEND_DIST', os.path.join(app.root_path, 'frontend', 'dist')),
     SERVE_FRONTEND_AT_ROOT=_env_bool('SERVE_FRONTEND_AT_ROOT', True),
     MAX_CONTENT_LENGTH=int(os.environ.get('MAX_CONTENT_LENGTH', '32768')),
+    TRUST_PROXY_HEADERS=_env_bool('TRUST_PROXY_HEADERS', _env_bool('RENDER')),
 )
+if app.config['TRUST_PROXY_HEADERS']:
+    # Render supplies exactly one trusted proxy hop in front of the service.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 form_submitted = False
 error_occurred = False
 devices = []
 RATE_LIMIT_STATE = {}
+RATE_LIMIT_LOCK = threading.Lock()
+RATE_LIMIT_LAST_SWEEP = 0.0
 RETAILER_REFRESH_LOCK = threading.Lock()
 RETAILER_REFRESH_THREAD = None
-SCORE_VERSION = 'v2-transparent-heuristic'
+SCORE_VERSION = 'v3-evidence-gated-readiness'
+SUPPORTED_OPERATING_SYSTEMS = ('Windows 11', 'macOS', 'ChromeOS', 'Android', 'iPadOS', 'Linux')
 USE_CASES = ('Personal', 'Work', 'Government')
 WORK_PROFILES = ('general_office', 'remote_worker', 'developer', 'privileged_admin', 'field_worker')
 USE_CASE_LABELS = {
@@ -105,15 +115,25 @@ def public_rate_limited(view):
     """Small single-process guard; use provider/API rate limiting in hosting too."""
     @functools.wraps(view)
     def wrapped(*args, **kwargs):
+        global RATE_LIMIT_LAST_SWEEP
         now = time.monotonic()
         key = request.remote_addr or 'unknown'
         window = app.config['PUBLIC_RATE_LIMIT']
-        bucket = RATE_LIMIT_STATE.get(key, [])
-        bucket = [stamp for stamp in bucket if now - stamp < app.config['PUBLIC_RATE_WINDOW']]
-        if len(bucket) >= window:
-            return jsonify({'error': 'rate limit exceeded'}), 429
-        bucket.append(now)
-        RATE_LIMIT_STATE[key] = bucket
+        rate_window = app.config['PUBLIC_RATE_WINDOW']
+        with RATE_LIMIT_LOCK:
+            if now - RATE_LIMIT_LAST_SWEEP >= rate_window or len(RATE_LIMIT_STATE) > 4096:
+                expired_keys = [address for address, stamps in RATE_LIMIT_STATE.items()
+                                if not stamps or now - stamps[-1] >= rate_window]
+                for address in expired_keys:
+                    RATE_LIMIT_STATE.pop(address, None)
+                RATE_LIMIT_LAST_SWEEP = now
+            bucket = [stamp for stamp in RATE_LIMIT_STATE.get(key, []) if now - stamp < rate_window]
+            if len(bucket) >= window:
+                response = jsonify({'error': 'rate limit exceeded'})
+                response.headers['Retry-After'] = str(rate_window)
+                return response, 429
+            bucket.append(now)
+            RATE_LIMIT_STATE[key] = bucket
         return view(*args, **kwargs)
     return wrapped
 
@@ -144,6 +164,8 @@ def add_security_headers(response):
     response.headers.setdefault('X-Frame-Options', 'DENY')
     response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
     response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    response.headers.setdefault('Cross-Origin-Opener-Policy', 'same-origin')
+    response.headers.setdefault('Cross-Origin-Resource-Policy', 'same-origin')
     response.headers.setdefault(
         'Content-Security-Policy',
         "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; "
@@ -191,6 +213,7 @@ def favicon():
 
 
 @app.route('/validate-links', methods=['POST'])
+@public_rate_limited
 @admin_mutation_required
 def validate_links():
     """Validate retailer links for a device (async helper)"""
@@ -306,36 +329,37 @@ minimum_requirements = {
 # --- Security Rule Engine and Scoring ---
 
 def infer_os_and_cpu(device_name: str, category: str):
+    """Return only platform details made explicit by the product text.
+
+    Brand and category defaults are deliberately not used: a Lenovo laptop is
+    not proof of Windows, and GHz values are not comparable across CPU families.
+    """
     name = device_name.lower()
-    # OS inference
-    if any(k in name for k in ['macbook', 'imac', 'mac ', 'macos', 'apple']):
+    if any(k in name for k in ['macbook', 'imac', 'mac mini', 'macos']):
         os = 'macOS'
-        cpu_vendor = 'Apple Silicon' if any(k in name for k in ['m1', 'm2', 'm3']) else 'Intel'
-    elif any(k in name for k in ['ipad']):
+    elif 'ipad' in name:
         os = 'iPadOS'
-        cpu_vendor = 'Apple Silicon'
-    elif any(k in name for k in ['surface', 'windows', 'thinkpad', 'xps', 'latitude', 'hp ', 'spectre', 'pavilion', 'lenovo', 'dell']):
+    elif 'windows 11' in name:
         os = 'Windows 11'
-        # Rough CPU inference
-        if any(k in name for k in ['ryzen', 'amd']):
-            cpu_vendor = 'AMD'
-        elif any(k in name for k in ['intel', 'core i', 'i3', 'i5', 'i7', 'i9']):
-            cpu_vendor = 'Intel'
-        else:
-            cpu_vendor = 'Unknown'
     elif any(k in name for k in ['chromebook', 'chromeos']):
         os = 'ChromeOS'
-        cpu_vendor = 'Intel'
     elif any(k in name for k in ['galaxy tab', 'android', 'samsung tab']):
         os = 'Android'
-        cpu_vendor = 'Qualcomm'
     elif any(k in name for k in ['ubuntu', ' linux', 'fedora', 'debian', 'redhat', 'centos', 'pop!_os', 'arch']):
         os = 'Linux'
-        cpu_vendor = 'Intel'
     else:
-        # Default by category
-        os = 'Windows 11' if category in ['Laptops', 'PCs'] else 'Android'
-        cpu_vendor = 'Intel' if category in ['Laptops', 'PCs'] else 'Unknown'
+        os = 'Unknown'
+
+    if re.search(r'\b(?:apple\s+)?m[1-5](?:\s|,|-|$)', name):
+        cpu_vendor = 'Apple Silicon'
+    elif any(k in name for k in ['ryzen', 'amd']):
+        cpu_vendor = 'AMD'
+    elif re.search(r'\b(?:intel|core\s+(?:ultra\s+)?[3579]|i[3579])\b', name):
+        cpu_vendor = 'Intel'
+    elif 'snapdragon' in name:
+        cpu_vendor = 'Qualcomm'
+    else:
+        cpu_vendor = 'Unknown'
     return os, cpu_vendor
 
 
@@ -381,87 +405,66 @@ def _rating_label(score):
     return 'Needs attention'
 
 
-def compute_security_score(device: dict, os: str, cpu_vendor: str, use_case: str):
-    """Return a transparent security score and the factors that produced it."""
-    factors = []
-    base_points = 50
-    score = base_points
-    factors.append({'id': 'baseline', 'label': 'Starting baseline', 'points': base_points,
-                    'explanation': 'Neutral starting point before device-specific evidence.'})
-    cpu_points = int(round(min(max((device.get('cpu_speed', 0) - 2.5) * 10, 0), 25)))
-    score += cpu_points
-    factors.append({'id': 'cpu', 'label': 'CPU capability', 'points': cpu_points,
-                    'explanation': 'Higher headroom helps updates, security tooling and sustained workloads.'})
-    ram_points = 5 if device.get('ram', 0) >= 16 else (2 if device.get('ram', 0) >= 8 else 0)
-    score += ram_points
-    factors.append({'id': 'memory', 'label': 'Memory headroom', 'points': ram_points,
-                    'explanation': 'More memory leaves room for browsers, updates and endpoint protection.'})
-    storage_points = 5 if device.get('storage', 0) >= 512 else 0
-    score += storage_points
-    factors.append({'id': 'storage', 'label': 'Storage headroom', 'points': storage_points,
-                    'explanation': 'Adequate free space makes updates, recovery and backups easier.'})
+def compute_security_score(device: dict, os: str, cpu_vendor: str, use_case: str,
+                           security_evidence=None, support=None, allow_fixture_estimate=False):
+    """Score evidence readiness and recorded risk, never brand or raw performance."""
+    if allow_fixture_estimate:
+        score = max(0, min(100, 55 + (10 if device.get('ram', 0) >= 16 else 0) +
+                           (10 if device.get('storage', 0) >= 512 else 0)))
+        factors = [{'id': 'fixture', 'label': 'Local fixture estimate', 'points': score,
+                    'explanation': 'Test-only estimate; it is never used by the live catalogue.'}]
+        return score, _rating_label(score), {
+            'factors': factors, 'hardware_rating': score, 'hardware_label': _rating_label(score),
+            'os_rating': score, 'os_label': _rating_label(score),
+        }
 
-    # OS baseline security
-    os_weight = {
-        'Windows 11': 10,
-        'macOS': 12,
-        'ChromeOS': 12,
-        'iPadOS': 10,
-        'Android': 6
-    }
-    os_points = os_weight.get(os, 8)
-    score += os_points
-    factors.append({'id': 'os', 'label': 'Operating-system baseline', 'points': os_points,
-                    'explanation': f'{os} security controls are inferred from the product name and category.'})
+    evidence = security_evidence or []
+    factors = [
+        {'id': 'identity', 'label': 'Explicit platform identity', 'points': 20,
+         'explanation': f'The feed explicitly identifies {os}; no platform was guessed from the brand.'},
+        {'id': 'support', 'label': 'Sourced support lifecycle', 'points': 25,
+         'explanation': 'A model/platform support record with source attribution is attached.'},
+        {'id': 'security_sources', 'label': 'Model-matched security evidence', 'points': 25,
+         'explanation': 'At least one sourced CVE or CPE-matched security record is attached.'},
+    ]
+    score = 70
+    support_until = str((support or {}).get('support_until') or '')
+    try:
+        support_date = datetime.fromisoformat(support_until.replace('Z', '+00:00'))
+        if support_date.tzinfo is None:
+            support_date = support_date.replace(tzinfo=timezone.utc)
+        if support_date < datetime.now(timezone.utc):
+            score -= 30
+            factors.append({'id': 'expired_support', 'label': 'Support has ended', 'points': -30,
+                            'explanation': 'The recorded security-support date is in the past.'})
+        else:
+            score += 10
+            factors.append({'id': 'current_support', 'label': 'Support remains current', 'points': 10,
+                            'explanation': 'The recorded security-support date is still in the future.'})
+    except ValueError:
+        score -= 15
+        factors.append({'id': 'unclear_support', 'label': 'Support date unclear', 'points': -15,
+                        'explanation': 'The support record cannot be interpreted as a current date.'})
 
-    # CPU vendor risk adjustments
-    if cpu_vendor in ['Intel', 'AMD']:
-        score -= 5  # speculative class mitigations overhead and residual risk
-        factors.append({'id': 'cpu_risk', 'label': 'CPU risk adjustment', 'points': -5,
-                        'explanation': 'Residual speculative-execution risk requires current firmware and OS mitigations.'})
-    elif cpu_vendor == 'Apple Silicon':
-        score += 3
-        factors.append({'id': 'cpu_risk', 'label': 'CPU risk adjustment', 'points': 3,
-                        'explanation': 'Apple Silicon receives a small baseline uplift in this heuristic.'})
+    for record in evidence:
+        cve = record.get('cve_id') or record.get('cpe') or 'recorded issue'
+        kev = str(record.get('kev_status') or '').lower() in {'1', 'true', 'yes', 'known_exploited'}
+        unresolved = bool(record.get('affected_version') and not record.get('fixed_version'))
+        points = -20 if kev else (-10 if unresolved else 2)
+        score += points
+        factors.append({
+            'id': f'evidence_{len(factors)}', 'label': str(cve)[:80], 'points': points,
+            'explanation': ('Known-exploited evidence requires urgent review.' if kev else
+                            'Affected-version evidence has no recorded fix.' if unresolved else
+                            'A sourced security record includes a recorded fix or is informational.'),
+        })
 
-    # Use-case requirements tighten score caps
-    if use_case in ['Government', 'Public Sector']:
-        if device.get('ram', 0) < 16 or device.get('cpu_speed', 0) < 3.0:
-            score -= 8
-            factors.append({'id': 'use_case', 'label': 'Public-sector baseline', 'points': -8,
-                            'explanation': 'The selected public-sector context expects at least 16 GB RAM and 3.0 GHz CPU.'})
-    elif use_case in ['Work', 'Business', 'Enterprise']:
-        if device.get('ram', 0) < 8:
-            score -= 5
-            factors.append({'id': 'use_case', 'label': 'Business baseline', 'points': -5,
-                            'explanation': 'The selected business context penalises devices below the 8 GB RAM baseline.'})
-
-    # Clamp
     score = max(0, min(100, int(round(score))))
-
-    # Level
-    if score >= 85:
-        level = 'Excellent'
-    elif score >= 70:
-        level = 'Good'
-    elif score >= 55:
-        level = 'Adequate'
-    else:
-        level = 'Risky'
-
-    hardware_score = max(0, min(100, int(round(
-        min((device.get('cpu_speed', 0) / 5.0) * 100, 100) * 0.5 +
-        min((device.get('ram', 0) / 32.0) * 100, 100) * 0.25 +
-        min((device.get('storage', 0) / 1000.0) * 100, 100) * 0.25
-    ))))
-    os_score = {'Windows 11': 82, 'macOS': 90, 'ChromeOS': 86,
-                'iPadOS': 87, 'Android': 70, 'Linux': 78}.get(os, 65)
+    level = _rating_label(score)
     return score, level, {
         'factors': factors,
-        'hardware_rating': hardware_score,
-        'hardware_label': _rating_label(hardware_score),
-        'os_rating': os_score,
-        'os_label': _rating_label(os_score),
+        'hardware_rating': None, 'hardware_label': 'Not independently assessed',
+        'os_rating': score, 'os_label': level,
     }
 
 
@@ -470,7 +473,9 @@ def experience_comment(device: dict, os: str, benchmark: dict):
     ram = int(device.get('ram') or 0)
     storage = int(device.get('storage') or 0)
     cpu = float(device.get('cpu_speed') or 0)
-    if benchmark['overall_index'] >= 80:
+    if benchmark.get('overall_index') is None:
+        summary = 'No independent performance result is attached, so performance is not rated.'
+    elif benchmark['overall_index'] >= 80:
         summary = 'Should feel responsive for demanding everyday work, multitasking and security tools.'
     elif benchmark['overall_index'] >= 60:
         summary = 'A balanced everyday experience for browsing, documents, calls and normal productivity.'
@@ -490,8 +495,10 @@ def experience_comment(device: dict, os: str, benchmark: dict):
         strengths.append('Strong CPU headroom')
     else:
         tradeoffs.append('CPU headroom is suited to normal rather than sustained heavy workloads')
+    os_context = ('The operating system is not confirmed by the available evidence.' if os == 'Unknown'
+                  else f'Platform guidance assumes a current, supported {os} installation; support is not verified here.')
     return {'summary': summary, 'strengths': strengths, 'tradeoffs': tradeoffs,
-            'os_context': f'Experience comments assume a current, supported {os} installation.'}
+            'os_context': os_context}
 
 
 def hardening_recommendations(os: str, use_case: str):
@@ -528,8 +535,30 @@ def hardening_recommendations(os: str, use_case: str):
     return recs
 
 
-def compute_benchmark_metrics(device: dict, security_score: int):
-    """Compute simple normalized hardware benchmark indices for display."""
+def compute_benchmark_metrics(device: dict, benchmark_evidence=None, allow_fixture_estimate=False):
+    """Return sourced benchmark data, or an explicit unrated state.
+
+    A GHz/RAM/storage blend is not a benchmark and must not be presented as one.
+    The old specification estimate remains available only to local fixture tests.
+    """
+    evidence = benchmark_evidence or []
+    sourced_scores = []
+    for item in evidence:
+        if item.get('evidence_type') not in {'measured', 'independent_published'}:
+            continue
+        try:
+            score = float(item.get('score'))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(score) and 0 <= score <= 100:
+            sourced_scores.append(score)
+    if sourced_scores:
+        return {'cpu_index': None, 'memory_index': None, 'storage_index': None,
+                'overall_index': int(round(sourced_scores[0])), 'rating_state': 'sourced'}
+    if not allow_fixture_estimate:
+        return {'cpu_index': None, 'memory_index': None, 'storage_index': None,
+                'overall_index': None, 'rating_state': 'unrated_no_benchmark'}
+
     cpu_speed = float(device.get('cpu_speed') or 0)
     ram_gb = int(device.get('ram') or 0)
     storage_gb = int(device.get('storage') or 0)
@@ -539,19 +568,16 @@ def compute_benchmark_metrics(device: dict, security_score: int):
     memory_index = max(0, min(100, int(round((ram_gb / 64.0) * 100))))
     storage_index = max(0, min(100, int(round((storage_gb / 2000.0) * 100))))
 
-    # Weighted blended score with security posture included for practical ranking
+    # Local fixture-only specification estimate; never used by the live catalogue.
     overall = int(round(
-        cpu_index * 0.35 +
-        memory_index * 0.25 +
-        storage_index * 0.15 +
-        security_score * 0.25
+        cpu_index * 0.50 + memory_index * 0.30 + storage_index * 0.20
     ))
 
     return {
         'cpu_index': cpu_index,
         'memory_index': memory_index,
         'storage_index': storage_index,
-        'overall_index': max(0, min(100, overall))
+        'overall_index': max(0, min(100, overall)), 'rating_state': 'fixture_estimate'
     }
 
 
@@ -668,10 +694,15 @@ def _normalise_work_profile(value):
     return value if value in WORK_PROFILES else 'general_office'
 
 
-def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'general_office'):
+def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'general_office',
+                      security_evidence_by_id=None, benchmark_evidence_by_id=None,
+                      support_by_id=None):
     """Filter/enrich devices based on use-case policies and compute security metadata."""
     use_case = _normalise_use_case(use_case)
     work_profile = _normalise_work_profile(work_profile)
+    security_evidence_by_id = security_evidence_by_id or {}
+    benchmark_evidence_by_id = benchmark_evidence_by_id or {}
+    support_by_id = support_by_id or {}
     enriched = []
     for d in devices_list:
         # Normalize keys between DB devices and scraped devices
@@ -695,8 +726,41 @@ def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'ge
         }
         inferred_os, cpu_vendor = infer_os_and_cpu(device['name'] or '', device.get('category') or '')
         os = device.get('operating_system') or inferred_os
-        findings, mitigations = detect_known_vulnerabilities(os, cpu_vendor, device['name'] or '')
-        score, level, score_details = compute_security_score(device, os, cpu_vendor, use_case)
+        os = os if os in SUPPORTED_OPERATING_SYSTEMS else 'Unknown'
+        security_evidence = security_evidence_by_id.get(device.get('id'), [])
+        benchmark_evidence = benchmark_evidence_by_id.get(device.get('id'), [])
+        support = support_by_id.get(device.get('id'))
+        source_state = device.get('source_state') or 'unknown'
+        fixture_mode = source_state == 'sample' and app.config.get('ALLOW_SAMPLE_DATA')
+        evidence_ready = bool(os != 'Unknown' and security_evidence and support)
+        if fixture_mode or evidence_ready:
+            if fixture_mode:
+                findings, mitigations = detect_known_vulnerabilities(os, cpu_vendor, device['name'] or '')
+            else:
+                findings = [
+                    f"{record.get('cve_id') or record.get('cpe') or 'Security record'}: "
+                    f"{record.get('summary') or 'review the linked evidence'}"
+                    for record in security_evidence
+                ]
+                mitigations = ['Confirm affected and fixed versions against the linked source before deployment.']
+            score, level, score_details = compute_security_score(
+                device, os, cpu_vendor, use_case, security_evidence=security_evidence,
+                support=support, allow_fixture_estimate=fixture_mode,
+            )
+            evidence_quality = 'fixture_estimate' if fixture_mode else 'evidence_gated_heuristic'
+        else:
+            score, level = None, 'Unrated'
+            findings = ['No model-specific security, support and patch evidence is attached.']
+            mitigations = ['Confirm the exact model, supported OS, firmware and patch lifecycle before deployment.']
+            score_details = {
+                'factors': [{
+                    'id': 'insufficient_evidence', 'label': 'Insufficient evidence', 'points': 0,
+                    'explanation': 'Retailer titles and hardware capacity do not establish a security baseline.'
+                }],
+                'hardware_rating': None, 'hardware_label': 'Unrated',
+                'os_rating': None, 'os_label': 'Unrated',
+            }
+            evidence_quality = 'insufficient'
         recs = hardening_recommendations(os, use_case)
 
         if use_case == 'Work' and work_profile == 'privileged_admin':
@@ -723,7 +787,8 @@ def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'ge
             'mitigations': mitigations,
             'recommendations': recs,
             'score_version': SCORE_VERSION,
-            'evidence_quality': 'heuristic',
+            'evidence_quality': evidence_quality,
+            'rating_state': 'rated' if score is not None else 'unrated_insufficient_evidence',
             'score_factors': score_details['factors'],
             'hardware_rating': score_details['hardware_rating'],
             'hardware_label': score_details['hardware_label'],
@@ -732,14 +797,18 @@ def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'ge
             'limitations': [
                 'This is a comparison heuristic, not a certification.',
                 'It does not verify firmware, patch status, vendor support or local policy.',
+                'A numeric rating is withheld when model-specific security and support evidence is missing.',
             ],
         }
-        device['benchmark'] = compute_benchmark_metrics(device, score)
+        device['benchmark'] = compute_benchmark_metrics(
+            device, benchmark_evidence=benchmark_evidence, allow_fixture_estimate=fixture_mode
+        )
         device['experience'] = experience_comment(device, os, device['benchmark'])
         device['ratings'] = {
             'security': {'score': score, 'label': level},
             'performance': {'score': device['benchmark']['overall_index'],
-                            'label': _rating_label(device['benchmark']['overall_index'])},
+                            'label': (_rating_label(device['benchmark']['overall_index'])
+                                      if device['benchmark']['overall_index'] is not None else 'Unrated')},
             'operating_system': {'score': score_details['os_rating'], 'label': score_details['os_label']},
             'hardware': {'score': score_details['hardware_rating'], 'label': score_details['hardware_label']},
         }
@@ -752,17 +821,21 @@ def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'ge
             'work_profile': work_profile if use_case == 'Work' else None,
             'score_version': SCORE_VERSION,
         }
+        device['evidence_completeness'] = {
+            'explicit_operating_system': os != 'Unknown',
+            'security_evidence': bool(security_evidence),
+            'support_lifecycle': bool(support),
+            'benchmark_evidence': bool(benchmark_evidence),
+        }
         enriched.append(device)
     return enriched
 
 def query_database(query, params):
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
     cursor = conn.cursor()
-    print(f"Executing query: {query} with params: {params}")
     cursor.execute(query, params)
     results = cursor.fetchall()
     conn.close()
-    print(f"Query results: {results}")
     return results
 
 def get_image_paths():
@@ -806,6 +879,23 @@ def resources():
 
 def _utc_now():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _parse_utc_timestamp(value, field_name):
+    """Parse and normalise an ISO-8601 timestamp; ambiguous dates are rejected."""
+    if not isinstance(value, str) or not value.strip() or len(value) > 80:
+        raise ValueError(f'{field_name} must be a valid ISO-8601 timestamp')
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace('Z', '+00:00'))
+    except ValueError as exc:
+        raise ValueError(f'{field_name} must be a valid ISO-8601 timestamp') from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f'{field_name} must include a timezone')
+    return parsed.astimezone(timezone.utc).replace(microsecond=0)
+
+
+def _normalise_timestamp(value, field_name):
+    return _parse_utc_timestamp(value, field_name).isoformat()
 
 
 def _is_expired(value):
@@ -978,9 +1068,20 @@ def _support_map(device_ids):
                       'checked_at': row[4], 'confidence': row[5]} for row in rows}
 
 
-def _api_device(device_row, use_case='Personal', work_profile='general_office', metadata=None, offers=None):
+def _api_device(device_row, use_case='Personal', work_profile='general_office', metadata=None, offers=None,
+                benchmark_evidence=None, security_evidence=None, support=None):
     """Return the stable public device representation used by the Vite app."""
-    item = apply_rule_engine(convert_to_dict([device_row]), use_case=use_case, work_profile=work_profile)[0]
+    device_id = device_row[0]
+    benchmark_evidence = (benchmark_evidence if benchmark_evidence is not None
+                          else _evidence_map('benchmark_results', [device_id]).get(device_id, []))
+    security_evidence = (security_evidence if security_evidence is not None
+                         else _evidence_map('security_evidence', [device_id]).get(device_id, []))
+    support = support if support is not None else _support_map([device_id]).get(device_id)
+    item = apply_rule_engine(
+        convert_to_dict([device_row]), use_case=use_case, work_profile=work_profile,
+        benchmark_evidence_by_id={device_id: benchmark_evidence},
+        security_evidence_by_id={device_id: security_evidence}, support_by_id={device_id: support}
+    )[0]
     metadata = metadata if metadata is not None else _catalogue_metadata_map([device_row[0]]).get(device_row[0])
     item['catalogue'] = metadata or {
         'source': None, 'source_url': None,
@@ -999,12 +1100,12 @@ def _api_device(device_row, use_case='Personal', work_profile='general_office', 
         'confidence': item['catalogue'].get('confidence') or 'unknown',
         'price_state': ('observed' if item['offers'] and item['catalogue'].get('source_state') == 'observed'
                         else 'verified' if item['offers'] else 'unavailable'),
-        'benchmark_state': 'heuristic_estimate',
-        'security_state': 'heuristic_rules',
+        'benchmark_state': item['benchmark'].get('rating_state', 'unrated_no_benchmark'),
+        'security_state': item['security'].get('rating_state', 'unrated_insufficient_evidence'),
     }
-    item['benchmark_evidence'] = _evidence_map('benchmark_results', [device_row[0]]).get(device_row[0], [])
-    item['security_evidence'] = _evidence_map('security_evidence', [device_row[0]]).get(device_row[0], [])
-    item['support_lifecycle'] = _support_map([device_row[0]]).get(device_row[0])
+    item['benchmark_evidence'] = benchmark_evidence
+    item['security_evidence'] = security_evidence
+    item['support_lifecycle'] = support
     return item
 
 
@@ -1037,45 +1138,65 @@ def _api_filters(data):
 
 
 def _api_catalogue(filters):
-    conn = sqlite3.connect(app.config['DATABASE_PATH'])
-    rows = conn.execute('SELECT * FROM devices ORDER BY id').fetchall()
-    conn.close()
-    query = filters['query'].lower()
-    category = filters['category'].lower()
-    brand = filters['brand'].lower()
-    operating_system = filters['operating_system'].lower()
-    matched = []
-    metadata_map = _catalogue_metadata_map([row[0] for row in rows])
-    offers_map = _vendor_offers_map([row[0] for row in rows])
-    for row in rows:
-        metadata = metadata_map.get(row[0]) or {}
-        if not app.config['ALLOW_SAMPLE_DATA'] and metadata.get('source_state') == 'sample':
-            continue
-        name, row_category = (row[1] or '').lower(), (row[2] or '').lower()
-        row_brand = (row[8] if len(row) > 8 else '') or (row[1] or '').split(' ', 1)[0]
-        if query and query not in name:
-            continue
-        if category and category not in row_category:
-            continue
-        if brand and brand not in str(row_brand).lower():
-            continue
-        if row[7] is not None and not (filters['price_min'] <= row[7] <= filters['price_max']):
-            continue
-        if row[3] < filters['cpu_speed'] or row[4] < filters['ram'] or row[5] < filters['storage'] or row[6] < filters['screen_size']:
-            continue
-        if operating_system and operating_system not in infer_os_and_cpu(row[1] or '', row[2] or '')[0].lower():
-            continue
-        matched.append(_api_device(row, filters['use_case'], filters['work_profile'], metadata, offers_map.get(row[0], [])))
-    matched.sort(key=lambda item: (
-        not item.get('allowed', True),
-        -(item.get('security') or {}).get('score', 0),
-        -(item.get('benchmark') or {}).get('overall_index', 0),
-        (item.get('offers') or [{}])[0].get('total_price', float('inf')),
-        item.get('name', '').lower(),
-    ))
+    where = []
+    params = []
+    if not app.config['ALLOW_SAMPLE_DATA']:
+        where.append("COALESCE(m.source_state, d.source_state, 'sample') != 'sample'")
+    if filters['query']:
+        where.append('LOWER(d.name) LIKE ?')
+        params.append(f"%{filters['query'].lower()}%")
+    if filters['category']:
+        where.append('LOWER(d.category) LIKE ?')
+        params.append(f"%{filters['category'].lower()}%")
+    if filters['brand']:
+        where.append('LOWER(COALESCE(d.brand, d.name)) LIKE ?')
+        params.append(f"%{filters['brand'].lower()}%")
+    if filters['operating_system']:
+        where.append("LOWER(COALESCE(d.operating_system, '')) = ?")
+        params.append(filters['operating_system'].lower())
+    where.extend([
+        '(d.price IS NULL OR d.price BETWEEN ? AND ?)',
+        'COALESCE(d.cpu_speed, 0) >= ?', 'COALESCE(d.ram, 0) >= ?',
+        'COALESCE(d.storage, 0) >= ?', 'COALESCE(d.screen_size, 0) >= ?',
+    ])
+    params.extend([filters['price_min'], filters['price_max'], filters['cpu_speed'],
+                   filters['ram'], filters['storage'], filters['screen_size']])
+    if filters['use_case'] == 'Work':
+        where.append('COALESCE(d.ram, 0) >= 8')
+    elif filters['use_case'] == 'Government':
+        where.extend(['COALESCE(d.ram, 0) >= 16', 'COALESCE(d.cpu_speed, 0) >= 3.0'])
+
+    where_sql = ' WHERE ' + ' AND '.join(where) if where else ''
+    order_sql = ''' ORDER BY
+        CASE WHEN EXISTS (SELECT 1 FROM security_evidence se WHERE se.device_id = d.id) THEN 0 ELSE 1 END,
+        CASE WHEN EXISTS (SELECT 1 FROM support_lifecycle sl WHERE sl.device_id = d.id) THEN 0 ELSE 1 END,
+        CASE WHEN EXISTS (SELECT 1 FROM benchmark_results br WHERE br.device_id = d.id) THEN 0 ELSE 1 END,
+        CASE COALESCE(m.confidence, 'unknown') WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END,
+        LOWER(d.name), d.id'''
     start = (filters['page'] - 1) * filters['page_size']
-    end = start + filters['page_size']
-    return matched[start:end], len(matched)
+    conn = sqlite3.connect(app.config['DATABASE_PATH'])
+    total = conn.execute(
+        'SELECT COUNT(*) FROM devices d LEFT JOIN device_catalogue_metadata m ON m.device_id = d.id' + where_sql,
+        params,
+    ).fetchone()[0]
+    rows = conn.execute(
+        'SELECT d.* FROM devices d LEFT JOIN device_catalogue_metadata m ON m.device_id = d.id' +
+        where_sql + order_sql + ' LIMIT ? OFFSET ?', params + [filters['page_size'], start]
+    ).fetchall()
+    conn.close()
+    device_ids = [row[0] for row in rows]
+    metadata_map = _catalogue_metadata_map(device_ids)
+    offers_map = _vendor_offers_map(device_ids)
+    benchmark_map = _evidence_map('benchmark_results', device_ids)
+    security_map = _evidence_map('security_evidence', device_ids)
+    support_map = _support_map(device_ids)
+    matched = [
+        _api_device(row, filters['use_case'], filters['work_profile'], metadata_map.get(row[0]),
+                    offers_map.get(row[0], []), benchmark_map.get(row[0], []),
+                    security_map.get(row[0], []), support_map.get(row[0], {}))
+        for row in rows
+    ]
+    return matched, total
 
 
 @app.route('/api/v1/healthz')
@@ -1458,35 +1579,17 @@ def index():
     )
 
 @app.route('/device/<int:device_id>')
+@public_rate_limited
 def device(device_id):
+    """Retire the legacy render-on-read detail page in favour of the React view."""
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM devices WHERE id = ?', (device_id,))
-    device = cursor.fetchone()
+    device = conn.execute('''SELECT d.id, COALESCE(m.source_state, d.source_state)
+                             FROM devices d LEFT JOIN device_catalogue_metadata m ON m.device_id = d.id
+                             WHERE d.id = ?''', (device_id,)).fetchone()
     conn.close()
-    
-    if not device:
+    if not device or (not app.config['ALLOW_SAMPLE_DATA'] and device[1] == 'sample'):
         abort(404)
-
-    device = convert_to_dict([device])[0]
-    # Enrich with rule engine (assume Work here; could be parameterized)
-    enriched = apply_rule_engine([device], use_case='Work')[0]
-    device.update({
-        'os': enriched.get('os'),
-        'cpu_vendor': enriched.get('cpu_vendor'),
-        'security': enriched.get('security'),
-        'benchmark': enriched.get('benchmark'),
-        'debloat_tools': enriched.get('debloat_tools')
-    })
-    # Add retailer links
-    device['retailer_links'] = enriched.get('retailer_links') or get_retailer_links(device['name'], device['category'])
-        
-    print(f"Device details for ID {device_id}: {device}")
-    
-    # Create flowchart (keeping existing functionality)
-    flowchart_image_path = create_flowchart(device, device['category'])
-    
-    return render_template('device.html', device=device, flowchart_image_path=flowchart_image_path)
+    return redirect(f'/#device/{device_id}', code=308)
 
 def create_flowchart(device, usage):
     usage_to_table = {
@@ -1714,9 +1817,23 @@ def refresh_retailer_observation_catalogue(observations=None):
                       'started_at': started_at, 'completed_at': _utc_now(), 'item_count': 0,
                       'error_summary': 'No valid retailer observations were returned; previous data was preserved.'}
         else:
-            replace_catalogue(products, source, source_url, retrieved_at)
-            result = {'provider': 'retailer_page_observation', 'status': 'completed',
-                      'started_at': started_at, 'completed_at': _utc_now(), 'item_count': len(products)}
+            conn = sqlite3.connect(app.config['DATABASE_PATH'])
+            existing_count = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
+            conn.close()
+            minimum_safe_count = max(2, math.ceil(existing_count * app.config['RETAILER_MIN_REFRESH_RATIO']))
+            if existing_count >= 4 and len(products) < minimum_safe_count:
+                result = {
+                    'provider': 'retailer_page_observation', 'status': 'partial_results',
+                    'started_at': started_at, 'completed_at': _utc_now(), 'item_count': len(products),
+                    'error_summary': (
+                        f'Only {len(products)} products were observed; the previous {existing_count}-product '
+                        'catalogue was preserved.'
+                    ),
+                }
+            else:
+                replace_catalogue(products, source, source_url, retrieved_at)
+                result = {'provider': 'retailer_page_observation', 'status': 'completed',
+                          'started_at': started_at, 'completed_at': _utc_now(), 'item_count': len(products)}
         _record_provider_run(result)
         return result
     except Exception as exc:
@@ -1872,7 +1989,7 @@ def validate_catalogue_feed(payload):
         parsed = urlparse(str(source_url))
         if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError('source_url must be an HTTPS attribution URL without credentials')
-    retrieved_at = str(payload.get('retrieved_at') or _utc_now())
+    retrieved_at = _normalise_timestamp(str(payload.get('retrieved_at') or _utc_now()), 'retrieved_at')
     normalised = []
     for index, product in enumerate(products):
         if not isinstance(product, dict):
@@ -1922,9 +2039,24 @@ def validate_catalogue_feed(payload):
             }
         except (KeyError, TypeError, ValueError):
             raise ValueError(f'product {index + 1} has invalid fields')
-        for date_field in ('price_checked_at', 'expires_at', 'support_until'):
-            if item[date_field] is not None and (not isinstance(item[date_field], str) or len(item[date_field]) > 80):
-                raise ValueError(f'product {index + 1} has invalid {date_field}')
+        item['price_checked_at'] = _normalise_timestamp(
+            item['price_checked_at'], f'product {index + 1} price_checked_at'
+        )
+        checked_dt = _parse_utc_timestamp(item['price_checked_at'], 'price_checked_at')
+        if item['expires_at'] is None:
+            item['expires_at'] = (checked_dt + timedelta(hours=app.config['CATALOGUE_TTL_HOURS'])).isoformat()
+        else:
+            item['expires_at'] = _normalise_timestamp(item['expires_at'], f'product {index + 1} expires_at')
+        expires_dt = _parse_utc_timestamp(item['expires_at'], 'expires_at')
+        if expires_dt <= checked_dt or expires_dt - checked_dt > timedelta(days=31):
+            raise ValueError(f'product {index + 1} has invalid freshness window')
+        if item['support_until'] is not None:
+            try:
+                support_value = str(item['support_until']).strip()
+                datetime.fromisoformat(support_value.replace('Z', '+00:00'))
+            except (TypeError, ValueError):
+                raise ValueError(f'product {index + 1} has invalid support_until')
+            item['support_until'] = support_value
         for url_field in ('source_url', 'evidence_url'):
             if item[url_field]:
                 parsed_url = urlparse(str(item[url_field]))
@@ -1936,6 +2068,11 @@ def validate_catalogue_feed(payload):
             raise ValueError(f'product {index + 1} has invalid source_state')
         if item['confidence'] not in {'high', 'medium', 'low', 'unknown'}:
             raise ValueError(f'product {index + 1} has invalid confidence')
+        # Operator-submitted JSON is reviewed input, not an independently verified assertion.
+        if item['source_state'] == 'verified':
+            item['source_state'] = 'reviewed'
+        if item['confidence'] == 'high':
+            item['confidence'] = 'medium'
         if item['image_url']:
             image_url = urlparse(str(item['image_url']))
             if image_url.scheme != 'https' or not image_url.hostname or image_url.username or image_url.password:
@@ -1959,11 +2096,21 @@ def validate_catalogue_feed(payload):
                     raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid price')
                 if price < 0:
                     raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid price')
-            checked_at = offer.get('checked_at') or retrieved_at
+            checked_at = _normalise_timestamp(
+                offer.get('checked_at') or retrieved_at,
+                f'product {index + 1} offer {offer_index + 1} checked_at',
+            )
+            checked_offer_dt = _parse_utc_timestamp(checked_at, 'checked_at')
             expires_at = offer.get('expires_at')
-            for field_name, field_value in (('checked_at', checked_at), ('expires_at', expires_at)):
-                if field_value is not None and (not isinstance(field_value, str) or len(field_value) > 80):
-                    raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid {field_name}')
+            if expires_at is None:
+                expires_at = (checked_offer_dt + timedelta(hours=app.config['OFFER_TTL_HOURS'])).isoformat()
+            else:
+                expires_at = _normalise_timestamp(
+                    expires_at, f'product {index + 1} offer {offer_index + 1} expires_at'
+                )
+            expires_offer_dt = _parse_utc_timestamp(expires_at, 'expires_at')
+            if expires_offer_dt <= checked_offer_dt or expires_offer_dt - checked_offer_dt > timedelta(days=7):
+                raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid freshness window')
             offer_source_url = offer.get('source_url') or source_url
             if offer_source_url:
                 parsed_offer_source = urlparse(str(offer_source_url))
@@ -2001,25 +2148,76 @@ def validate_catalogue_feed(payload):
                 'source_url': offer_source_url,
             })
         item['offers'] = offers
+        if not isinstance(item['benchmarks'], list) or len(item['benchmarks']) > 30:
+            raise ValueError(f'product {index + 1} has invalid benchmark evidence')
         for evidence in item['benchmarks']:
             if not isinstance(evidence, dict) or str(evidence.get('evidence_type') or 'unknown') not in {'measured', 'independent_published', 'vendor_claimed', 'specification_estimate', 'unknown'}:
                 raise ValueError(f'product {index + 1} has invalid benchmark evidence')
-            if evidence.get('source_url') and urlparse(str(evidence['source_url'])).scheme != 'https':
+            parsed_benchmark_url = urlparse(str(evidence.get('source_url') or ''))
+            if (parsed_benchmark_url.scheme != 'https' or not parsed_benchmark_url.hostname or
+                    parsed_benchmark_url.username or parsed_benchmark_url.password):
                 raise ValueError(f'product {index + 1} has invalid benchmark source_url')
+            try:
+                evidence_score = float(evidence.get('score'))
+            except (TypeError, ValueError):
+                raise ValueError(f'product {index + 1} has invalid benchmark score')
+            if not math.isfinite(evidence_score) or not 0 <= evidence_score <= 100:
+                raise ValueError(f'product {index + 1} has invalid benchmark score')
+            evidence['score'] = evidence_score
+            evidence['tested_at'] = _normalise_timestamp(
+                evidence.get('tested_at'), f'product {index + 1} benchmark tested_at'
+            )
+            if evidence.get('confidence') == 'high':
+                evidence['confidence'] = 'medium'
+        if not isinstance(item['security_evidence'], list) or len(item['security_evidence']) > 50:
+            raise ValueError(f'product {index + 1} has invalid security evidence')
         for evidence in item['security_evidence']:
-            if not isinstance(evidence, dict) or not evidence.get('provider'):
+            if (not isinstance(evidence, dict) or not evidence.get('provider') or
+                    not (evidence.get('cve_id') or evidence.get('cpe') or evidence.get('cpe_name'))):
                 raise ValueError(f'product {index + 1} has invalid security evidence')
-            if evidence.get('source_url') and urlparse(str(evidence['source_url'])).scheme != 'https':
+            if not evidence.get('cpe') and evidence.get('cpe_name'):
+                evidence['cpe'] = evidence['cpe_name']
+            parsed_security_url = urlparse(str(evidence.get('source_url') or ''))
+            if (parsed_security_url.scheme != 'https' or not parsed_security_url.hostname or
+                    parsed_security_url.username or parsed_security_url.password):
                 raise ValueError(f'product {index + 1} has invalid security source_url')
+            evidence['checked_at'] = _normalise_timestamp(
+                evidence.get('checked_at'), f'product {index + 1} security evidence checked_at'
+            )
+            if evidence.get('confidence') == 'high':
+                evidence['confidence'] = 'medium'
+        support = item.get('support_lifecycle')
+        if support is not None:
+            if not isinstance(support, dict) or not support.get('operating_system') or not support.get('support_until'):
+                raise ValueError(f'product {index + 1} has invalid support lifecycle')
+            parsed_support_url = urlparse(str(support.get('source_url') or ''))
+            if (parsed_support_url.scheme != 'https' or not parsed_support_url.hostname or
+                    parsed_support_url.username or parsed_support_url.password):
+                raise ValueError(f'product {index + 1} has invalid support source_url')
+            try:
+                datetime.fromisoformat(str(support['support_until']).replace('Z', '+00:00'))
+            except (TypeError, ValueError):
+                raise ValueError(f'product {index + 1} has invalid support_until')
+            support['checked_at'] = _normalise_timestamp(
+                support.get('checked_at'), f'product {index + 1} support checked_at'
+            )
+            if support.get('confidence') == 'high':
+                support['confidence'] = 'medium'
         if (not item['name'] or not item['category'] or
-                (item['price'] is not None and item['price'] < 0) or
-                item['cpu_speed'] < 0 or item['ram'] < 0 or item['storage'] < 0 or item['screen_size'] < 0):
+                any(not math.isfinite(value) for value in (
+                    item['cpu_speed'], float(item['ram']), float(item['storage']), item['screen_size'],
+                    item['price'] if item['price'] is not None else 0,
+                )) or
+                (item['price'] is not None and not 0 <= item['price'] <= 1_000_000) or
+                not 0 <= item['cpu_speed'] <= 10 or not 0 <= item['ram'] <= 2048 or
+                not 0 <= item['storage'] <= 1_000_000 or not 0 <= item['screen_size'] <= 200):
             raise ValueError(f'product {index + 1} has invalid values')
         normalised.append(item)
     return normalised, source, source_url, retrieved_at
 
 
 @app.route('/admin/catalogue/import', methods=['POST'])
+@public_rate_limited
 @admin_mutation_required
 def import_catalogue_feed():
     try:
@@ -2213,8 +2411,8 @@ def search_live():
         }), 200
         
     except Exception as e:
-        print(f"Live search error: {e}")
-        return jsonify({'error': str(e)}), 500
+        print(f"Live search error: {type(e).__name__}")
+        return jsonify({'error': 'catalogue search failed'}), 500
 
 @app.route("/get-current-price", methods=["POST"])
 @public_rate_limited
@@ -2256,10 +2454,11 @@ def get_current_price():
         }), 200
         
     except Exception as e:
-        print(f"Price fetch error: {e}")
-        return jsonify({'error': str(e)}), 500
+        print(f"Price fetch error: {type(e).__name__}")
+        return jsonify({'error': 'price lookup failed'}), 500
 
 @app.route("/refresh-devices", methods=["POST"])
+@public_rate_limited
 @admin_mutation_required
 def refresh_devices():
     """Operator-only refresh boundary for configured providers or observations."""
@@ -2277,70 +2476,9 @@ def refresh_devices():
     return jsonify(result), 503 if result['status'] != 'completed' else 202
 
 @app.route("/compare-devices", methods=["POST"])
+@public_rate_limited
 def compare_devices():
-    """Compare devices based on user criteria"""
-    try:
-        data = request.get_json()
-        device_id = data.get('deviceId')
-        category = data.get('category')
-        price_range = data.get('priceRange')
-        performance = data.get('performance')
-        
-        # Get the current device for comparison
-        conn = sqlite3.connect(app.config['DATABASE_PATH'])
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM devices WHERE id = ?', (device_id,))
-        current_device = cursor.fetchone()
-        
-        if not current_device:
-            return jsonify([])
-        
-        current_price = current_device[7]  # price is at index 7
-        current_cpu = current_device[3]    # cpu_speed is at index 3
-        current_category = current_device[2] # category is at index 2
-        
-        # Build comparison query
-        query = "SELECT * FROM devices WHERE id != ?"
-        params = [device_id]
-        
-        # Category filter
-        if category == 'same':
-            query += " AND category = ?"
-            params.append(current_category)
-        
-        # Price range filter
-        if price_range == 'similar':
-            query += " AND price BETWEEN ? AND ?"
-            params.extend([current_price - 200, current_price + 200])
-        elif price_range == 'lower':
-            query += " AND price < ?"
-            params.append(current_price)
-        elif price_range == 'higher':
-            query += " AND price > ?"
-            params.append(current_price)
-        
-        # Performance filter
-        if performance == 'similar':
-            query += " AND cpu_speed BETWEEN ? AND ?"
-            params.extend([current_cpu - 0.5, current_cpu + 0.5])
-        elif performance == 'higher':
-            query += " AND cpu_speed > ?"
-            params.append(current_cpu)
-        
-        query += " LIMIT 6"  # Limit to 6 comparison devices
-        
-        cursor.execute(query, params)
-        comparison_devices = cursor.fetchall()
-        conn.close()
-        
-        # Convert to dict format
-        comparison_list = convert_to_dict(comparison_devices)
-        
-        return jsonify(comparison_list)
-        
-    except Exception as e:
-        print(f"Error in compare_devices: {e}")
-        return jsonify([]), 500
+    return jsonify({'error': 'legacy endpoint retired; use /api/v1/devices/<id>/comparisons'}), 410
 
 def enhance_device_data_with_security():
     """Add security and retailer information to device data"""
@@ -2451,7 +2589,7 @@ HARDENING_COMMANDS = {
             'fdesetup status || fdesetup enable -user "$USER"',
             'echo "[Info] FileVault enable command issued (may prompt)."'
         ],
-        'enable_firewall': [
+        'enforce_firewall': [
             'defaults write /Library/Preferences/com.apple.alf globalstate -int 1',
             'echo "[Info] macOS Application Firewall enabled."'
         ],
@@ -2491,23 +2629,31 @@ HARDENING_COMMANDS = {
         ]
     },
     'Linux': {
-        'enable_firewall': [
+        'enforce_firewall': [
             'echo "[Info] Enabling UFW firewall..."',
-            'if command -v ufw >/dev/null 2>&1; then sudo ufw enable || true; else echo "[Warn] UFW not installed"; fi'
+            'command -v ufw >/dev/null 2>&1 || { echo "[Error] UFW is not installed" >&2; exit 1; }',
+            'sudo ufw --force enable',
+            'sudo ufw status | grep -q "Status: active"'
         ],
         'enable_automatic_updates': [
             'echo "[Info] Ensuring unattended-upgrades present (Debian/Ubuntu)..."',
-            'if command -v apt-get >/dev/null 2>&1; then sudo apt-get update -y || true; sudo apt-get install -y unattended-upgrades || true; sudo dpkg-reconfigure -plow unattended-upgrades || true; fi'
+            'command -v apt-get >/dev/null 2>&1 || { echo "[Error] This task requires apt-get" >&2; exit 1; }',
+            'sudo apt-get update -y',
+            'sudo apt-get install -y unattended-upgrades',
+            'sudo dpkg-reconfigure -plow unattended-upgrades'
         ],
         'disable_root_ssh_login': [
             'echo "[Info] Disabling direct root SSH login..."',
-            "sudo sed -i.bak 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config || true",
-            'sudo systemctl restart ssh || sudo systemctl restart sshd || true'
+            "sudo sed -i.bak -E 's/^#?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config",
+            'sudo sshd -t',
+            'if systemctl list-unit-files ssh.service >/dev/null 2>&1; then sudo systemctl restart ssh; else sudo systemctl restart sshd; fi'
         ],
         'install_fail2ban': [
             'echo "[Info] Installing fail2ban (Debian/Ubuntu)..."',
-            'if command -v apt-get >/dev/null 2>&1; then sudo apt-get install -y fail2ban || true; fi',
-            'sudo systemctl enable --now fail2ban || true'
+            'command -v apt-get >/dev/null 2>&1 || { echo "[Error] This task requires apt-get" >&2; exit 1; }',
+            'sudo apt-get install -y fail2ban',
+            'sudo systemctl enable --now fail2ban',
+            'sudo systemctl is-active --quiet fail2ban'
         ],
         'enforce_password_policy_note': [
             'echo "[Note] Configure PAM (pam_pwquality) & login.defs for password complexity and lockout."'
@@ -2519,7 +2665,9 @@ def sanitize_task_id(label: str) -> str:
     return re.sub(r'[^a-z0-9_]+', '', label.lower().replace(' ', '_'))
 
 def build_hardening_script(os_name: str, task_ids: list):
-    os_group = 'Windows 11' if 'Windows' in os_name else os_name
+    os_group = str(os_name or '').strip()
+    if os_group not in HARDENING_COMMANDS:
+        raise ValueError('Unsupported operating system')
     commands_map = HARDENING_COMMANDS.get(os_group, {})
     shebang = ''
     filename_ext = 'txt'
@@ -2536,7 +2684,7 @@ def build_hardening_script(os_name: str, task_ids: list):
     header = [
         '# =============================================',
         '#  Device Provisioning Toolkit - Hardening Script',
-        f'#  Target OS: {os_name}',
+        f'#  Target OS: {os_group}',
         '#  Generated: runtime',
         '#  NOTE: Review before executing with elevated privileges.',
         '# =============================================',
@@ -2550,7 +2698,7 @@ def build_hardening_script(os_name: str, task_ids: list):
             body.extend(commands_map[tid])
             body.append('')
         else:
-            body.append(f"# [Skipped] Unknown or unsupported task id: {tid}")
+            raise ValueError(f'Unsupported task: {tid}')
     script = shebang + '\n'.join(header + body) + '\n'
     return script, filename_ext
 
@@ -2559,30 +2707,35 @@ def build_hardening_script(os_name: str, task_ids: list):
 def generate_hardening_script():
     try:
         form_tasks = request.form.getlist('tasks')
-        os_name = request.form.get('os', 'Unknown')
-        device_id = request.form.get('device_id')
+        os_name = str(request.form.get('os', '') or '').strip()
+        device_id = str(request.form.get('device_id') or 'unknown')
+        if os_name not in HARDENING_COMMANDS:
+            return Response('Unsupported operating system.', mimetype='text/plain', status=400)
 
         # Whitelist tasks by sanitization & presence in mapping
         normalized = []
-        os_group = 'Windows 11' if 'Windows' in os_name else os_name
-        valid_map = HARDENING_COMMANDS.get(os_group, {})
+        valid_map = HARDENING_COMMANDS[os_name]
         for t in form_tasks:
             tid = sanitize_task_id(t)
-            if tid in valid_map:
-                normalized.append(tid)
+            if tid not in valid_map:
+                return Response('Unsupported hardening task.', mimetype='text/plain', status=400)
+            normalized.append(tid)
 
         if not normalized:
-            return Response('No valid tasks selected.', mimetype='text/plain')
+            return Response('No valid tasks selected.', mimetype='text/plain', status=400)
 
         script, ext = build_hardening_script(os_name, normalized)
-        fname = f'hardening_device_{device_id or "unknown"}.{ext}'
+        safe_device_id = device_id if device_id.isdigit() else 'unknown'
+        fname = f'hardening_device_{safe_device_id}.{ext}'
         return Response(
             script,
             mimetype='text/plain',
             headers={'Content-Disposition': f'attachment; filename={fname}'}
         )
-    except Exception as e:
-        return Response(f'Error generating script: {e}', mimetype='text/plain', status=500)
+    except ValueError as exc:
+        return Response(str(exc), mimetype='text/plain', status=400)
+    except Exception:
+        return Response('Hardening script generation failed.', mimetype='text/plain', status=500)
 
 # ---- Asynchronous Scraping (background refresh) ----
 SCRAPE_THREAD = None
@@ -2596,6 +2749,7 @@ def background_scrape():
         SCRAPE_THREAD = None
 
 @app.route('/async-refresh', methods=['POST'])
+@public_rate_limited
 @admin_mutation_required
 def async_refresh():
     global SCRAPE_THREAD

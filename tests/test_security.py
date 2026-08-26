@@ -14,7 +14,7 @@ class SecurityBoundaryTests(unittest.TestCase):
         os.environ['LIVE_DATA_REQUIRED'] = 'false'
         from app import app
         cls.app = app
-        cls.app.config.update(TESTING=True, ADMIN_TOKEN='test-token')
+        cls.app.config.update(TESTING=True, ADMIN_TOKEN='test-token', PUBLIC_RATE_LIMIT=10000)
 
     @classmethod
     def tearDownClass(cls):
@@ -33,7 +33,7 @@ class SecurityBoundaryTests(unittest.TestCase):
             response = client.post(route, json={'device_name': 'test'})
             self.assertEqual(response.status_code, 401, route)
         response = client.post('/generate-hardening-script', data={'tasks': ['unknown']})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
 
     def test_image_proxy_rejects_non_allowlisted_urls(self):
         with patch('app.requests.get') as get:
@@ -100,7 +100,7 @@ class SecurityBoundaryTests(unittest.TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.json['api_version'], 'v1')
         self.assertEqual(detail.json['item']['recommendation_context']['use_case'], 'Government')
-        self.assertEqual(detail.json['item']['security']['score_version'], 'v2-transparent-heuristic')
+        self.assertEqual(detail.json['item']['security']['score_version'], 'v3-evidence-gated-readiness')
         self.assertIn('limitations', detail.json['item']['security'])
 
         comparisons = client.get('/api/v1/devices/1/comparisons?use_case=Government')
@@ -165,7 +165,8 @@ class SecurityBoundaryTests(unittest.TestCase):
             self.assertEqual(imported['catalogue']['source'], 'Approved test feed')
             self.assertIn('evidence_quality', imported['catalogue'])
             self.assertEqual([offer['price'] for offer in imported['offers']], [1099.0, 1299.0])
-            self.assertGreaterEqual(len(imported['security']['score_factors']), 4)
+            self.assertEqual(imported['security']['score'], None)
+            self.assertEqual(imported['security']['rating_state'], 'unrated_insufficient_evidence')
             self.assertIn('experience', imported)
             self.assertIn('ratings', imported)
         finally:
@@ -218,6 +219,7 @@ class SecurityBoundaryTests(unittest.TestCase):
                 'screen_size': 14, 'price': None,
                 'offers': [
                     {'vendor': 'Expired vendor', 'url': 'https://expired.example/product', 'price': 700,
+                     'checked_at': '2019-12-31T00:00:00+00:00',
                      'expires_at': '2020-01-01T00:00:00+00:00'},
                     {'vendor': 'Current vendor', 'url': 'https://current.example/product', 'price': 800,
                      'total_price': 820, 'delivery_price': 20},
@@ -285,6 +287,10 @@ class SecurityBoundaryTests(unittest.TestCase):
             item = client.get('/api/v1/devices').json['items'][0]
             self.assertEqual(item['catalogue']['source_state'], 'observed')
             self.assertEqual(item['data_quality']['price_state'], 'observed')
+            self.assertEqual(item['os'], 'Unknown')
+            self.assertIsNone(item['security']['score'])
+            self.assertEqual(item['security']['level'], 'Unrated')
+            self.assertIsNone(item['benchmark']['overall_index'])
             self.assertEqual([offer['total_price'] for offer in item['offers']], [699.0, 799.0])
             self.assertTrue(all(not offer['total_price_complete'] for offer in item['offers']))
             cached_search = client.post('/search-live', json={'query': 'Test Laptop', 'max_results': 10})
@@ -301,6 +307,75 @@ class SecurityBoundaryTests(unittest.TestCase):
             failed = app_module.refresh_retailer_observation_catalogue([])
             self.assertEqual(failed['status'], 'no_results')
             self.assertEqual(client.get('/api/v1/catalogue/status').json['product_count'], 1)
+        finally:
+            app_module.app.config.update(**original)
+            os.unlink(database.name)
+
+    def test_feed_dates_assertions_and_hardening_input_are_constrained(self):
+        import app as app_module
+        with self.assertRaises(ValueError):
+            app_module.validate_catalogue_feed({
+                'source': 'Bad date feed', 'retrieved_at': 'not-a-date',
+                'products': [{'name': 'Device', 'brand': 'Brand', 'model': 'Model', 'category': 'Laptops'}],
+            })
+        products, _, _, _ = app_module.validate_catalogue_feed({
+            'source': 'Operator feed', 'source_url': 'https://provider.example/catalogue',
+            'products': [{
+                'name': 'Device', 'brand': 'Brand', 'model': 'Model', 'category': 'Laptops',
+                'source_state': 'verified', 'confidence': 'high',
+            }],
+        })
+        self.assertEqual(products[0]['source_state'], 'reviewed')
+        self.assertEqual(products[0]['confidence'], 'medium')
+        client = self.app.test_client()
+        injected = client.post('/generate-hardening-script', data={
+            'os': 'Windows 11\nWrite-Output injected', 'tasks': ['enforce_firewall'],
+            'device_id': '1\r\nunsafe.txt',
+        })
+        self.assertEqual(injected.status_code, 400)
+        valid = client.post('/generate-hardening-script', data={
+            'os': 'Windows 11', 'tasks': ['enforce_firewall'], 'device_id': '12',
+        })
+        self.assertEqual(valid.status_code, 200)
+        self.assertIn('filename=hardening_device_12.ps1', valid.headers['Content-Disposition'])
+        self.assertNotIn('injected', valid.text)
+        evidence = [{'cve_id': 'CVE-TEST-1', 'fixed_version': '2.0', 'source_url': 'https://security.example/cve'}]
+        support = {'support_until': '2030-01-01'}
+        low_spec = {'cpu_speed': 1.0, 'ram': 4, 'storage': 64}
+        high_spec = {'cpu_speed': 5.0, 'ram': 128, 'storage': 4096}
+        low_score = app_module.compute_security_score(
+            low_spec, 'Windows 11', 'Intel', 'Personal', evidence, support
+        )[0]
+        high_score = app_module.compute_security_score(
+            high_spec, 'Windows 11', 'Intel', 'Personal', evidence, support
+        )[0]
+        self.assertEqual(low_score, high_score)
+
+    def test_legacy_detail_redirects_without_rendering_graphviz(self):
+        with patch('app.create_flowchart') as flowchart:
+            response = self.app.test_client().get('/device/1')
+        self.assertEqual(response.status_code, 308)
+        self.assertEqual(response.headers['Location'], '/#device/1')
+        flowchart.assert_not_called()
+
+    def test_partial_retailer_refresh_preserves_fuller_catalogue(self):
+        import app as app_module
+        original = {key: app_module.app.config[key] for key in ('DATABASE_PATH', 'ALLOW_SAMPLE_DATA')}
+        database = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        database.close()
+        try:
+            app_module.app.config.update(DATABASE_PATH=database.name, ALLOW_SAMPLE_DATA=False)
+            app_module.ensure_database_schema()
+            observations = [{
+                'name': f'Brand Laptop {number}, 16GB RAM, 512GB SSD', 'brand': 'Brand',
+                'category': 'Laptops', 'ram': 16, 'storage': 512, 'price': 800 + number,
+                'retailer': 'John Lewis',
+                'product_url': f'https://www.johnlewis.com/brand-laptop-{number}/p{number}',
+            } for number in range(1, 5)]
+            self.assertEqual(app_module.refresh_retailer_observation_catalogue(observations)['status'], 'completed')
+            partial = app_module.refresh_retailer_observation_catalogue(observations[:1])
+            self.assertEqual(partial['status'], 'partial_results')
+            self.assertEqual(app_module.app.test_client().get('/api/v1/catalogue/status').json['product_count'], 4)
         finally:
             app_module.app.config.update(**original)
             os.unlink(database.name)

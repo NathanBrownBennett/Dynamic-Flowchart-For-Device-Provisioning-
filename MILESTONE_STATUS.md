@@ -221,3 +221,20 @@ This mode is useful staging data, not a retailer-authorised API feed or a claim
 of production readiness. Managed durable storage, formal retailer/provider
 terms, real benchmark and vulnerability evidence, operator OIDC/roles, backups
 and monitoring remain separate production gates.
+
+## Security and result-integrity remediation (2026-08-26)
+
+- Completed a standard repository security assessment covering the Flask/React
+  request paths, catalogue ingestion, retailer observations, generated scripts,
+  persistence and container boundary.
+- Evidence-gated live ratings now show `Not rated` instead of turning retailer
+  titles or unknown specifications into security/performance numbers.
+- Retired render-on-read Graphviz detail handling, moved catalogue pagination
+  ahead of evidence enrichment, bounded rate-limit state, constrained generated
+  scripts and added strict feed date/evidence validation.
+- Added partial-refresh preservation and non-root deterministic container builds.
+- Backend tests pass 16/16, frontend contracts 3/3, Playwright passes 8/8,
+  production frontend build and Python compilation pass, and Python/JavaScript
+  runtime dependency audits report no known vulnerabilities.
+- The public pilot remains staging-grade pending the production gates documented
+  in `SECURITY_ASSESSMENT.md`.
