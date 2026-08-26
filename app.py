@@ -40,6 +40,10 @@ app.config.update(
     PROVIDER_SYNC_ENABLED=_env_bool('PROVIDER_SYNC_ENABLED'),
     CATALOGUE_TTL_HOURS=int(os.environ.get('CATALOGUE_TTL_HOURS', '168')),
     OFFER_TTL_HOURS=int(os.environ.get('OFFER_TTL_HOURS', '48')),
+    RETAILER_SEARCH_TERMS=os.environ.get('RETAILER_SEARCH_TERMS', 'laptop,tablet,desktop computer'),
+    RETAILER_RESULT_LIMIT=max(1, min(int(os.environ.get('RETAILER_RESULT_LIMIT', '8')), 20)),
+    RETAILER_OBSERVATION_TTL_HOURS=max(1, min(int(os.environ.get('RETAILER_OBSERVATION_TTL_HOURS', '12')), 48)),
+    RETAILER_REFRESH_INTERVAL_MINUTES=max(15, min(int(os.environ.get('RETAILER_REFRESH_INTERVAL_MINUTES', '360')), 1440)),
     DATABASE_PATH=os.environ.get('DATABASE_PATH', os.path.join(app.root_path, 'devices.db')),
     IMAGE_PROXY_MAX_BYTES=int(os.environ.get('IMAGE_PROXY_MAX_BYTES', '5242880')),
     PUBLIC_RATE_LIMIT=int(os.environ.get('PUBLIC_RATE_LIMIT', '30')),
@@ -52,6 +56,8 @@ form_submitted = False
 error_occurred = False
 devices = []
 RATE_LIMIT_STATE = {}
+RETAILER_REFRESH_LOCK = threading.Lock()
+RETAILER_REFRESH_THREAD = None
 SCORE_VERSION = 'v2-transparent-heuristic'
 USE_CASES = ('Personal', 'Work', 'Government')
 WORK_PROFILES = ('general_office', 'remote_worker', 'developer', 'privileged_admin', 'field_worker')
@@ -189,7 +195,7 @@ def favicon():
 def validate_links():
     """Validate retailer links for a device (async helper)"""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         device_name = data.get('device_name', '')
         category = data.get('category', 'device')
         
@@ -836,7 +842,7 @@ def _catalogue_state(product_count=None, offer_count=None):
         "SELECT COUNT(*) FROM device_catalogue_metadata WHERE source_state = 'sample'"
     ).fetchone()[0]
     current_products = conn.execute(
-        "SELECT COUNT(*) FROM device_catalogue_metadata WHERE source_state IN ('verified', 'reviewed') "
+        "SELECT COUNT(*) FROM device_catalogue_metadata WHERE source_state IN ('verified', 'reviewed', 'observed') "
         "AND (expires_at IS NULL OR expires_at > ?)", (_utc_now(),)
     ).fetchone()[0]
     current_offers = conn.execute(
@@ -991,7 +997,8 @@ def _api_device(device_row, use_case='Personal', work_profile='general_office', 
     item['data_quality'] = {
         'catalogue_state': item['catalogue'].get('source_state') or 'unknown',
         'confidence': item['catalogue'].get('confidence') or 'unknown',
-        'price_state': 'verified' if item['offers'] else 'unavailable',
+        'price_state': ('observed' if item['offers'] and item['catalogue'].get('source_state') == 'observed'
+                        else 'verified' if item['offers'] else 'unavailable'),
         'benchmark_state': 'heuristic_estimate',
         'security_state': 'heuristic_rules',
     }
@@ -1082,9 +1089,9 @@ def api_healthz():
 @public_rate_limited
 def api_catalogue_status():
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
-    rows = conn.execute('''SELECT source, source_url, MAX(retrieved_at),
+    rows = conn.execute('''SELECT source, MIN(source_url), MAX(retrieved_at),
                           MAX(price_checked_at), COUNT(*)
-                          FROM device_catalogue_metadata GROUP BY source, source_url
+                          FROM device_catalogue_metadata GROUP BY source
                           ORDER BY MAX(retrieved_at) DESC''').fetchall()
     product_count = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
     offer_count = conn.execute('SELECT COUNT(*) FROM device_offers').fetchone()[0]
@@ -1095,12 +1102,20 @@ def api_catalogue_status():
     security_count = conn.execute('SELECT COUNT(DISTINCT device_id) FROM security_evidence').fetchone()[0]
     identity_count = conn.execute("SELECT COUNT(*) FROM devices WHERE brand IS NOT NULL AND model IS NOT NULL").fetchone()[0]
     sample_count = conn.execute("SELECT COUNT(*) FROM device_catalogue_metadata WHERE source_state = 'sample'").fetchone()[0]
+    source_state_rows = conn.execute(
+        'SELECT source_state, COUNT(*) FROM device_catalogue_metadata GROUP BY source_state ORDER BY source_state'
+    ).fetchall()
     conn.close()
     visible_product_count = product_count if app.config['ALLOW_SAMPLE_DATA'] else max(0, product_count - sample_count)
     return jsonify({
         'api_version': 'v1', 'product_count': visible_product_count,
         'catalogue_state': _catalogue_state(product_count=product_count, offer_count=offer_count),
         'live_scraping': False,
+        'retailer_observation_enabled': app.config['ENABLE_LIVE_SCRAPING'],
+        'catalogue_mode': 'retailer_observation' if any(row[0] == 'observed' for row in source_state_rows) else 'provider_feed',
+        'catalogue_disclaimer': ('Retailer page observations are not retailer-authorised feeds. '
+                                 'Verify price, stock, condition and specifications on the retailer site.'),
+        'source_states': {row[0] or 'unknown': row[1] for row in source_state_rows},
         'sample_data': app.config['ALLOW_SAMPLE_DATA'],
         'live_data_required': app.config['LIVE_DATA_REQUIRED'],
         'offer_count': offer_count, 'current_offer_count': current_offer_count,
@@ -1558,9 +1573,13 @@ def flowchart():
     return "Flowchart functionality moved to device-specific pages"
 
 def populate_database_with_real_data():
-    """Load a local fixture only when explicitly enabled for development/tests."""
+    """Bootstrap the explicitly selected catalogue mode when the database is empty."""
+    if app.config['ENABLE_LIVE_SCRAPING'] and not app.config['ALLOW_SAMPLE_DATA']:
+        result = refresh_retailer_observation_catalogue()
+        print(f"Retailer observation bootstrap: {result['status']} ({result['item_count']} products)")
+        return
     if not app.config['ALLOW_SAMPLE_DATA']:
-        print('Catalogue bootstrap skipped: ALLOW_SAMPLE_DATA is false')
+        print('Catalogue bootstrap skipped: no catalogue source is enabled')
         return
     try:
         print("Loading explicitly enabled local catalogue fixture...")
@@ -1571,6 +1590,161 @@ def populate_database_with_real_data():
         print(f"Successfully populated database with {len(real_devices)} devices")
     except Exception as e:
         print(f"Error populating database: {e}")
+
+
+def _retailer_search_terms():
+    terms = [term.strip()[:80] for term in str(app.config['RETAILER_SEARCH_TERMS']).split(',') if term.strip()]
+    return terms[:10] or ['laptop', 'tablet', 'desktop computer']
+
+
+def _observed_operating_system(name):
+    """Return only an OS family that the product name makes explicit."""
+    lowered = str(name or '').lower()
+    if 'chromebook' in lowered or 'chromeos' in lowered:
+        return 'ChromeOS'
+    if 'windows 11' in lowered:
+        return 'Windows 11'
+    if 'ipad' in lowered:
+        return 'iPadOS'
+    if 'macbook' in lowered or 'imac' in lowered:
+        return 'macOS'
+    if 'galaxy tab' in lowered or 'android' in lowered:
+        return 'Android'
+    return None
+
+
+def build_retailer_observation_feed(observations=None):
+    """Convert bounded retailer cards into a validated, clearly labelled feed."""
+    checked_at = _utc_now()
+    expires_at = (datetime.now(timezone.utc) + timedelta(
+        hours=app.config['RETAILER_OBSERVATION_TTL_HOURS']
+    )).replace(microsecond=0).isoformat()
+    if observations is None:
+        observations = device_scraper.collect_retailer_observations(
+            _retailer_search_terms(), max_per_source=app.config['RETAILER_RESULT_LIMIT']
+        )
+    disclaimer = ('Unofficial retailer page observation; verify product, condition, stock, '
+                  'specifications and price on the retailer site before purchase.')
+    products_by_name = {}
+    for observation in observations:
+        name = str(observation.get('name') or '').strip()[:160]
+        retailer = str(observation.get('retailer') or observation.get('source') or '').strip()[:80]
+        product_url = str(observation.get('product_url') or '').strip()
+        try:
+            price = float(observation.get('price'))
+        except (TypeError, ValueError):
+            continue
+        parsed_url = urlparse(product_url)
+        if (not name or not retailer or price <= 0 or parsed_url.scheme != 'https' or
+                not parsed_url.hostname or parsed_url.username or parsed_url.password or
+                parsed_url.hostname.lower() not in {
+                    'amazon.co.uk', 'www.amazon.co.uk', 'johnlewis.com', 'www.johnlewis.com'
+                }):
+            continue
+        brand = str(observation.get('brand') or name.split(' ', 1)[0]).strip()[:80] or 'Unknown'
+        key = re.sub(r'[^a-z0-9]+', ' ', name.lower()).strip()
+        offer = {
+            'provider': 'retailer_page_observation', 'vendor': retailer,
+            'url': product_url, 'price': price, 'item_price': price,
+            'total_price': price, 'currency': 'GBP',
+            'availability': 'observed', 'stock_message': 'Shown on retailer search page',
+            'condition': str(observation.get('condition') or 'new')[:30],
+            'product_identifier': observation.get('product_identifier') or name,
+            'checked_at': checked_at, 'expires_at': expires_at,
+            'source_url': product_url, 'source_license': disclaimer,
+            'is_affiliate': False, 'is_sponsored': False,
+        }
+        if key in products_by_name:
+            existing = products_by_name[key]
+            if not any(item['vendor'] == retailer and item['url'] == product_url for item in existing['offers']):
+                existing['offers'].append(offer)
+            existing['price'] = min(existing['price'], price)
+            continue
+        products_by_name[key] = {
+            'name': name, 'brand': brand, 'model': name,
+            'category': str(observation.get('category') or 'Laptops')[:60],
+            'cpu_speed': max(0.0, float(observation.get('cpu_speed') or 0)),
+            'ram': max(0, int(observation.get('ram') or 0)),
+            'storage': max(0, int(observation.get('storage') or 0)),
+            'screen_size': max(0.0, float(observation.get('screen_size') or 0)),
+            'price': price, 'availability': 'observed',
+            'source': f'{retailer} page observation', 'source_url': product_url,
+            'price_checked_at': checked_at, 'expires_at': expires_at,
+            'evidence_url': product_url, 'evidence_quality': 'vendor',
+            'source_license': disclaimer, 'confidence': 'low',
+            'freshness_hours': app.config['RETAILER_OBSERVATION_TTL_HOURS'],
+            'operating_system': _observed_operating_system(name),
+            'image_url': None, 'source_state': 'observed', 'offers': [offer],
+        }
+    payload = {
+        'source': 'Retailer page observations',
+        'retrieved_at': checked_at,
+        'products': list(products_by_name.values())[:500],
+    }
+    if not payload['products']:
+        return [], payload['source'], None, checked_at
+    return validate_catalogue_feed(payload)
+
+
+def _record_provider_run(result):
+    try:
+        conn = sqlite3.connect(app.config['DATABASE_PATH'])
+        conn.execute(
+            '''INSERT INTO provider_runs (provider, status, started_at, completed_at, item_count, error_summary)
+               VALUES (?, ?, ?, ?, ?, ?)''',
+            (result['provider'], result['status'], result['started_at'], result.get('completed_at'),
+             result.get('item_count', 0), result.get('error_summary'))
+        )
+        conn.commit()
+        conn.close()
+    except sqlite3.Error as exc:
+        print(f"Could not record retailer observation run: {type(exc).__name__}")
+
+
+def refresh_retailer_observation_catalogue(observations=None):
+    """Refresh atomically; a failed observation never erases the last catalogue."""
+    started_at = _utc_now()
+    if not RETAILER_REFRESH_LOCK.acquire(blocking=False):
+        return {'provider': 'retailer_page_observation', 'status': 'already_running',
+                'started_at': started_at, 'completed_at': _utc_now(), 'item_count': 0}
+    try:
+        products, source, source_url, retrieved_at = build_retailer_observation_feed(observations)
+        if not products:
+            result = {'provider': 'retailer_page_observation', 'status': 'no_results',
+                      'started_at': started_at, 'completed_at': _utc_now(), 'item_count': 0,
+                      'error_summary': 'No valid retailer observations were returned; previous data was preserved.'}
+        else:
+            replace_catalogue(products, source, source_url, retrieved_at)
+            result = {'provider': 'retailer_page_observation', 'status': 'completed',
+                      'started_at': started_at, 'completed_at': _utc_now(), 'item_count': len(products)}
+        _record_provider_run(result)
+        return result
+    except Exception as exc:
+        result = {'provider': 'retailer_page_observation', 'status': 'failed',
+                  'started_at': started_at, 'completed_at': _utc_now(), 'item_count': 0,
+                  'error_summary': f'{type(exc).__name__}: retailer observation failed'[:200]}
+        _record_provider_run(result)
+        return result
+    finally:
+        RETAILER_REFRESH_LOCK.release()
+
+
+def _retailer_refresh_loop():
+    interval = app.config['RETAILER_REFRESH_INTERVAL_MINUTES'] * 60
+    stop_event = threading.Event()
+    while not stop_event.wait(interval):
+        result = refresh_retailer_observation_catalogue()
+        print(f"Scheduled retailer observation: {result['status']} ({result['item_count']} products)")
+
+
+def start_retailer_refresh_worker():
+    global RETAILER_REFRESH_THREAD
+    if not app.config['ENABLE_LIVE_SCRAPING'] or RETAILER_REFRESH_THREAD:
+        return
+    RETAILER_REFRESH_THREAD = threading.Thread(
+        target=_retailer_refresh_loop, name='retailer-observation-refresh', daemon=True
+    )
+    RETAILER_REFRESH_THREAD.start()
 
 def populate_fallback_data():
     """Compatibility helper for local fixture tests; never an implicit fallback."""
@@ -1725,8 +1899,8 @@ def validate_catalogue_feed(payload):
                 'screen_size': float(product.get('screen_size', 0)),
                 'price': float(product['price']) if product.get('price') is not None else None,
                 'availability': str(product.get('availability') or 'unknown')[:40],
-                'source': source,
-                'source_url': source_url,
+                'source': str(product.get('source') or source).strip()[:160],
+                'source_url': product.get('source_url') or source_url,
                 'price_checked_at': product.get('price_checked_at') or retrieved_at,
                 'expires_at': product.get('expires_at'),
                 'support_until': product.get('support_until'),
@@ -1758,7 +1932,7 @@ def validate_catalogue_feed(payload):
                     raise ValueError(f'product {index + 1} has invalid {url_field}')
         if item['evidence_quality'] not in {'reviewed', 'vendor', 'independent', 'unknown'}:
             raise ValueError(f'product {index + 1} has invalid evidence_quality')
-        if item['source_state'] not in {'verified', 'reviewed', 'sample'}:
+        if item['source_state'] not in {'verified', 'reviewed', 'observed', 'sample'}:
             raise ValueError(f'product {index + 1} has invalid source_state')
         if item['confidence'] not in {'high', 'medium', 'low', 'unknown'}:
             raise ValueError(f'product {index + 1} has invalid confidence')
@@ -1972,6 +2146,7 @@ def get_device_image_url(device_name, scraped_url=None):
 # Initialize the pilot schema without requiring an untracked local database.
 print("Initializing database with device data...")
 ensure_database_schema()
+start_retailer_refresh_worker()
 ensure_db_indexes()
 
 @app.route("/api/image-proxy", methods=["GET"])
@@ -2020,25 +2195,22 @@ def image_proxy():
 @app.route("/search-live", methods=["POST"])
 @public_rate_limited
 def search_live():
-    """
-    Endpoint for live device search across retailers.
-    Takes search term and returns fresh market results.
-    """
+    """Search the latest cached catalogue without triggering outbound requests."""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         search_term = data.get('query', '').strip()
-        max_results = data.get('max_results', 20)
+        max_results = max(1, min(int(data.get('max_results', 20)), 50))
         
         if not search_term or len(search_term) < 2:
             return jsonify({'error': 'Search term too short'}), 400
         
+        filters = _api_filters({'query': search_term, 'page_size': max_results})
+        results, total = _api_catalogue(filters)
         return jsonify({
-            'query': search_term,
-            'results': [],
-            'total_found': 0,
-            'source': 'approved_provider_feed',
-            'message': 'Live retailer search is disabled until provider terms, access and rate limits are approved.'
-        }), 503
+            'query': search_term, 'results': results, 'total_found': total,
+            'source': 'cached_catalogue', 'catalogue_state': _catalogue_state(),
+            'message': 'Results use the latest cached feed; retailer observations must be verified on the retailer site.'
+        }), 200
         
     except Exception as e:
         print(f"Live search error: {e}")
@@ -2052,14 +2224,36 @@ def get_current_price():
     Real-time price comparison across retailers.
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
         device_name = data.get('device_name', '')
-        retailer = data.get('retailer', 'amazon')  # amazon, currys, johnlewis, etc.
+        retailer = str(data.get('retailer', '') or '').strip()[:80]
         
         if not device_name:
             return jsonify({'error': 'Device name required'}), 400
         
-        return jsonify({'error': 'live pricing is disabled; use an approved imported offer feed'}), 503
+        conn = sqlite3.connect(app.config['DATABASE_PATH'])
+        query = '''SELECT o.vendor, o.price, o.total_price, o.currency, o.availability,
+                          o.checked_at, o.expires_at, o.url, d.name, m.source_state
+                   FROM device_offers o JOIN devices d ON d.id = o.device_id
+                   LEFT JOIN device_catalogue_metadata m ON m.device_id = d.id
+                   WHERE LOWER(d.name) LIKE ?
+                     AND (o.expires_at IS NULL OR o.expires_at > ?)'''
+        params = [f'%{device_name.lower()[:100]}%', _utc_now()]
+        if retailer:
+            query += ' AND LOWER(o.vendor) LIKE ?'
+            params.append(f'%{retailer.lower()}%')
+        query += ' ORDER BY COALESCE(o.total_price, o.price) ASC LIMIT 1'
+        row = conn.execute(query, params).fetchone()
+        conn.close()
+        if not row:
+            return jsonify({'error': 'no current cached offer found'}), 404
+        return jsonify({
+            'device_name': row[8], 'retailer': row[0], 'price': row[1],
+            'total_price': row[2] if row[2] is not None else row[1],
+            'currency': row[3], 'availability': row[4], 'checked_at': row[5],
+            'expires_at': row[6], 'link': row[7], 'source_state': row[9] or 'unknown',
+            'message': 'Observed price; verify the final price and stock on the retailer site.'
+        }), 200
         
     except Exception as e:
         print(f"Price fetch error: {e}")
@@ -2068,21 +2262,18 @@ def get_current_price():
 @app.route("/refresh-devices", methods=["POST"])
 @admin_mutation_required
 def refresh_devices():
-    """Operator-only provider refresh boundary; no scraper fallback."""
+    """Operator-only refresh boundary for configured providers or observations."""
+    provider = str((request.get_json(silent=True) or {}).get('provider') or '').strip()
+    if provider in {'retailer_observation', 'retailer_page_observation'}:
+        if not app.config['ENABLE_LIVE_SCRAPING']:
+            return jsonify({'success': False, 'status': 'retailer_observation_disabled'}), 503
+        result = refresh_retailer_observation_catalogue()
+        return jsonify(result), 202 if result['status'] == 'completed' else 503
     if not app.config['PROVIDER_SYNC_ENABLED']:
         return jsonify({'success': False, 'status': 'provider_sync_disabled',
                         'message': 'Provider sync is disabled until approved adapters and credentials are configured.'}), 503
-    provider = (request.get_json(silent=True) or {}).get('provider', '')
     result = run_provider(str(provider), enabled=app.config['PROVIDER_SYNC_ENABLED'])
-    conn = sqlite3.connect(app.config['DATABASE_PATH'])
-    conn.execute(
-        '''INSERT INTO provider_runs (provider, status, started_at, completed_at, item_count, error_summary)
-           VALUES (?, ?, ?, ?, ?, ?)''',
-        (result['provider'], result['status'], result['started_at'], result.get('completed_at'),
-         result.get('item_count', 0), result.get('error_summary'))
-    )
-    conn.commit()
-    conn.close()
+    _record_provider_run(result)
     return jsonify(result), 503 if result['status'] != 'completed' else 202
 
 @app.route("/compare-devices", methods=["POST"])

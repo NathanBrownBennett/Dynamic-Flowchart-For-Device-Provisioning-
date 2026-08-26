@@ -21,10 +21,23 @@ false; when no approved feed is present, the public API reports `empty` or
 - `provider_runs` records status, count and a bounded error summary without
   storing credentials or response payloads.
 
-The legacy scraper module is retained only for local maintenance compatibility;
-the public search, current-price, refresh and background paths do not call it.
-Provider activation is disabled until terms, rate limits, attribution and
-credential injection are approved.
+## Retailer observation mode
+
+`ENABLE_LIVE_SCRAPING=true` enables a bounded staging collector for fixed
+Amazon UK and John Lewis search pages. It runs once when an empty database
+starts and then on the configured background interval. The public search and
+price routes read the cached database and never trigger an outbound request.
+
+The collector accepts no user-supplied URL, follows no redirects, enforces
+timeouts and a response-size ceiling, limits search terms and results, stores
+no retailer images, and preserves the previous catalogue when a run fails.
+Every record is labelled `observed`, low confidence and unofficial, with a
+verify-before-purchase warning. Currys is not collected because its pages reject
+the bounded request; no bypass is attempted.
+
+This makes the staging catalogue useful without inventing prices, but it is not
+a retailer-authorised product feed. Credentialled provider activation remains
+disabled until terms, rate limits, attribution and credentials are approved.
 
 ## Production boundary
 

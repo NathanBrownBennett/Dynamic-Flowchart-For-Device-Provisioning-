@@ -3,10 +3,9 @@ import json
 import re
 from bs4 import BeautifulSoup
 import time
-import random
 import csv
 import os
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urljoin, urlparse
 
 class LinkValidator:
     """Validates retailer URLs are accessible"""
@@ -48,13 +47,54 @@ class LinkValidator:
 class DeviceDataScraper:
     def __init__(self):
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'BStudioB-Device-Provisioning-Toolkit/1.0 (+https://provisioning.bstudiob.co.uk/)'
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         self.link_validator = LinkValidator()
         self.request_timeout = (3, 10)
         self.max_html_bytes = int(os.environ.get('SCRAPER_MAX_HTML_BYTES', '2097152'))
+        self.request_delay = max(0.0, min(float(os.environ.get('RETAILER_REQUEST_DELAY_SECONDS', '0.5')), 5.0))
+
+    @staticmethod
+    def _price_from_text(value):
+        match = re.search(r'£\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)', str(value or ''))
+        if not match:
+            return None
+        try:
+            price = float(match.group(1).replace(',', ''))
+            return price if price > 0 else None
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _retailer_url(value, base_url, allowed_hosts):
+        absolute = urljoin(base_url, str(value or '').strip())
+        parsed = urlparse(absolute)
+        if (parsed.scheme != 'https' or parsed.username or parsed.password or
+                (parsed.hostname or '').lower() not in allowed_hosts):
+            return None
+        return absolute
+
+    @staticmethod
+    def _brand_from_title(title):
+        known = ('Acer', 'Apple', 'ASUS', 'Dell', 'Google', 'HP', 'Huawei', 'Lenovo',
+                 'Microsoft', 'MSI', 'Samsung')
+        lowered = str(title or '').lower()
+        for brand in known:
+            if re.search(rf'\b{re.escape(brand.lower())}\b', lowered):
+                return brand
+        first = re.sub(r'[^A-Za-z0-9-]', '', str(title or '').split(' ', 1)[0])
+        return first[:80] or 'Unknown'
+
+    @staticmethod
+    def _is_device_title(title):
+        lowered = str(title or '').lower()
+        markers = ('laptop', 'notebook', 'macbook', 'chromebook', 'thinkpad', 'ideapad',
+                   'zenbook', 'ipad', 'tablet', 'galaxy tab', 'surface pro', 'desktop',
+                   'imac', 'all-in-one', 'gaming pc', 'tower pc', 'mini pc', 'mac mini',
+                   'omnidesk')
+        return any(marker in lowered for marker in markers)
 
     def _get_html(self, url):
         """Fetch bounded retailer HTML with no redirect-based trust expansion."""
@@ -109,8 +149,8 @@ class DeviceDataScraper:
             print(f"Error loading CSV: {e}")
             return devices
 
-    def scrape_amazon_devices(self, search_terms):
-        """Scrape device data from Amazon search results"""
+    def scrape_amazon_devices(self, search_terms, max_per_term=5):
+        """Observe bounded Amazon UK search results from fixed HTTPS pages."""
         devices = []
         
         for term in search_terms:
@@ -123,13 +163,13 @@ class DeviceDataScraper:
                 # Find product containers
                 products = soup.find_all('div', {'data-component-type': 's-search-result'})
                 
-                for i, product in enumerate(products[:5]):  # Limit to 5 per search
+                for product in products[:max(1, min(int(max_per_term), 20))]:
                     device_data = self.extract_amazon_product_data(product)
                     if device_data:
                         devices.append(device_data)
                 
-                # Add delay to be respectful
-                time.sleep(random.uniform(1, 3))
+                if self.request_delay:
+                    time.sleep(self.request_delay)
                 
             except Exception as e:
                 print(f"Error scraping Amazon for {term}: {e}")
@@ -140,17 +180,28 @@ class DeviceDataScraper:
         """Extract individual product data from Amazon product container"""
         try:
             # Product name
-            title_elem = product.find('h2', class_='a-size-mini')
-            if not title_elem:
-                title_elem = product.find('span', class_='a-offscreen')
-            name = title_elem.get_text(strip=True) if title_elem else "Unknown Device"
+            title_elem = product.select_one('h2 a span') or product.select_one('h2 span') or product.find('h2')
+            name = title_elem.get_text(' ', strip=True) if title_elem else ''
+            if not name or name.startswith('£') or not self._is_device_title(name):
+                return None
             
             # Price
-            price_elem = product.find('span', class_='a-price-whole')
-            price = 0
-            if price_elem:
-                price_text = price_elem.get_text(strip=True).replace(',', '')
-                price = float(re.findall(r'\d+', price_text)[0]) if re.findall(r'\d+', price_text) else 0
+            price_elem = product.select_one('span.a-price span.a-offscreen') or product.select_one('span.a-offscreen')
+            price = self._price_from_text(price_elem.get_text(' ', strip=True) if price_elem else '')
+            if price is None:
+                return None
+
+            link_elem = product.select_one('h2 a[href]') or product.select_one('a.a-link-normal[href]')
+            product_url = self._retailer_url(
+                link_elem.get('href') if link_elem else None,
+                'https://www.amazon.co.uk/',
+                {'amazon.co.uk', 'www.amazon.co.uk'},
+            )
+            if not product_url:
+                return None
+            asin = str(product.get('data-asin') or '').strip().upper()
+            if re.fullmatch(r'[A-Z0-9]{10}', asin):
+                product_url = f'https://www.amazon.co.uk/dp/{asin}'
             
             # Image
             img_elem = product.find('img', class_='s-image')
@@ -160,10 +211,10 @@ class DeviceDataScraper:
             category = self.determine_category(name)
             
             # Extract specs from title/description
-            cpu_speed, ram, storage, screen_size = self.extract_specs_from_text(name)
+            cpu_speed, ram, storage, screen_size = self.extract_specs_from_text(name, use_defaults=False)
             
             return {
-                'name': name[:100],  # Limit name length
+                'name': name[:160],
                 'category': category,
                 'cpu_speed': cpu_speed,
                 'ram': ram,
@@ -171,12 +222,89 @@ class DeviceDataScraper:
                 'screen_size': screen_size,
                 'price': price,
                 'image_url': image_url,
-                'source': 'Amazon'
+                'source': 'Amazon UK',
+                'retailer': 'Amazon UK',
+                'product_url': product_url,
+                'product_identifier': asin or None,
+                'brand': self._brand_from_title(name),
+                'condition': 'refurbished' if re.search(r'\b(renewed|refurbished|pre-owned)\b', name, re.I) else 'new',
             }
             
         except Exception as e:
             print(f"Error extracting product data: {e}")
             return None
+
+    def scrape_john_lewis_devices(self, search_terms, max_per_term=8):
+        """Observe bounded John Lewis search results from fixed HTTPS pages."""
+        devices = []
+        for term in search_terms:
+            try:
+                search_url = f"https://www.johnlewis.com/search?search-term={quote_plus(term)}"
+                soup = BeautifulSoup(self._get_html(search_url), 'html.parser')
+                products = soup.select('article')
+                accepted = 0
+                for product in products:
+                    if accepted >= max(1, min(int(max_per_term), 20)):
+                        break
+                    device_data = self.extract_john_lewis_product_data(product)
+                    if device_data:
+                        devices.append(device_data)
+                        accepted += 1
+                if self.request_delay:
+                    time.sleep(self.request_delay)
+            except Exception as exc:
+                print(f"John Lewis observation failed for {term}: {type(exc).__name__}")
+        return devices
+
+    def extract_john_lewis_product_data(self, product):
+        """Extract one structured John Lewis product card without guessing values."""
+        try:
+            title_elem = product.select_one('[data-testid="product-title"]')
+            price_elem = product.select_one('[data-testid="product-card-price-now"]')
+            link_elem = product.select_one('a[href]')
+            name = title_elem.get_text(' ', strip=True) if title_elem else ''
+            price = self._price_from_text(price_elem.get_text(' ', strip=True) if price_elem else '')
+            product_url = self._retailer_url(
+                link_elem.get('href') if link_elem else None,
+                'https://www.johnlewis.com/',
+                {'johnlewis.com', 'www.johnlewis.com'},
+            )
+            if not name or price is None or not product_url or not self._is_device_title(name):
+                return None
+            cpu_speed, ram, storage, screen_size = self.extract_specs_from_text(name, use_defaults=False)
+            return {
+                'name': name[:160],
+                'category': self.determine_category(name),
+                'cpu_speed': cpu_speed,
+                'ram': ram,
+                'storage': storage,
+                'screen_size': screen_size,
+                'price': price,
+                'image_url': None,
+                'source': 'John Lewis',
+                'retailer': 'John Lewis',
+                'product_url': product_url,
+                'product_identifier': None,
+                'brand': self._brand_from_title(name),
+                'condition': 'new',
+            }
+        except Exception as exc:
+            print(f"John Lewis product extraction failed: {type(exc).__name__}")
+            return None
+
+    def collect_retailer_observations(self, search_terms, max_per_source=8):
+        """Collect a bounded catalogue; individual retailer failures are isolated."""
+        observations = []
+        collectors = (
+            ('Amazon UK', self.scrape_amazon_devices),
+            ('John Lewis', self.scrape_john_lewis_devices),
+        )
+        for retailer, collector in collectors:
+            try:
+                observations.extend(collector(search_terms, max_per_term=max_per_source))
+            except Exception as exc:
+                print(f"{retailer} observation failed: {type(exc).__name__}")
+        return observations
 
     def scrape_currys_devices(self, search_terms):
         """Scrape device data from Currys PC World"""
@@ -258,36 +386,34 @@ class DeviceDataScraper:
         else:
             return 'Laptops'  # Default to laptops
 
-    def extract_specs_from_text(self, text):
-        """Extract technical specifications from product text"""
+    def extract_specs_from_text(self, text, use_defaults=True):
+        """Extract explicit specifications; live observations use zero for unknowns."""
         text_lower = text.lower()
         
         # CPU Speed
-        cpu_speed = 3.0  # Default
+        cpu_speed = 3.0 if use_defaults else 0.0
         cpu_match = re.search(r'(\d+\.?\d*)\s*ghz', text_lower)
         if cpu_match:
             cpu_speed = float(cpu_match.group(1))
-        elif 'm1' in text_lower or 'm2' in text_lower or 'm3' in text_lower:
+        elif use_defaults and ('m1' in text_lower or 'm2' in text_lower or 'm3' in text_lower):
             cpu_speed = 3.2  # Apple Silicon default
         
         # RAM
-        ram = 8  # Default
-        ram_match = re.search(r'(\d+)\s*gb.*ram|(\d+)gb.*memory', text_lower)
+        ram = 8 if use_defaults else 0
+        ram_match = re.search(r'(\d+)\s*gb\s*(?:ram|memory)\b|(?:ram|memory)\s*[:\-]?\s*(\d+)\s*gb\b', text_lower)
         if ram_match:
             ram = int(ram_match.group(1) or ram_match.group(2))
         
         # Storage
-        storage = 256  # Default
-        storage_match = re.search(r'(\d+)\s*gb.*ssd|(\d+)\s*tb.*ssd|(\d+)gb.*storage|(\d+)tb.*storage', text_lower)
+        storage = 256 if use_defaults else 0
+        storage_match = re.search(r'(\d+(?:\.\d+)?)\s*(tb|gb)\s*(?:ssd|storage|emmc|hdd)\b', text_lower)
         if storage_match:
-            if 'tb' in text_lower:
-                storage = int((storage_match.group(1) or storage_match.group(2) or storage_match.group(3) or storage_match.group(4))) * 1000
-            else:
-                storage = int(storage_match.group(1) or storage_match.group(2) or storage_match.group(3) or storage_match.group(4))
+            amount = float(storage_match.group(1))
+            storage = int(amount * 1000 if storage_match.group(2) == 'tb' else amount)
         
         # Screen Size
-        screen_size = 13.0  # Default
-        screen_match = re.search(r'(\d+\.?\d*)\s*["\']|(\d+\.?\d*)-inch', text_lower)
+        screen_size = 13.0 if use_defaults else 0.0
+        screen_match = re.search(r'(\d+\.?\d*)\s*["\'”“″]|(\d+\.?\d*)[ -]?inch', text_lower)
         if screen_match:
             screen_size = float(screen_match.group(1) or screen_match.group(2))
         

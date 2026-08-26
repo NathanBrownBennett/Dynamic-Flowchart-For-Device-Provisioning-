@@ -11,8 +11,8 @@ test('the public frontend contract does not include operator endpoints', () => {
   assert.equal(publicPaths.some(path => /refresh|validate|admin|proxy/.test(path)), false)
 })
 
-test('the catalogue contract exposes freshness and evidence state, not fabricated live prices', () => {
-  const statusFields = ['catalogue_state', 'current_offer_count', 'benchmark_coverage', 'security_evidence_coverage', 'sample_data']
-  assert.deepEqual(statusFields, ['catalogue_state', 'current_offer_count', 'benchmark_coverage', 'security_evidence_coverage', 'sample_data'])
+test('the catalogue contract exposes freshness, observation mode and evidence state', () => {
+  const statusFields = ['catalogue_state', 'catalogue_mode', 'source_states', 'current_offer_count', 'benchmark_coverage', 'security_evidence_coverage', 'sample_data']
+  assert.deepEqual(statusFields, ['catalogue_state', 'catalogue_mode', 'source_states', 'current_offer_count', 'benchmark_coverage', 'security_evidence_coverage', 'sample_data'])
   assert.equal('/readyz'.startsWith('/api/'), false)
 })

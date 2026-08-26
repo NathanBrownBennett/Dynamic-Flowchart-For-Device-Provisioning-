@@ -191,3 +191,33 @@ deployed.
 6. Import a reviewed live catalogue with vendor offers, verify freshness and
    stale-price behavior, then re-run the hosted browser and API acceptance
    checks before widening access.
+
+## Bounded live retailer catalogue implementation (2026-08-26)
+
+Implemented and locally verified:
+
+- Replaced the disconnected legacy price path with a bounded staging-only
+  retailer observation collector for fixed Amazon UK and John Lewis HTTPS
+  search pages. Currys remains excluded because it rejects the bounded request;
+  no bypass is attempted.
+- Modernised Amazon title, decimal price, canonical product URL and explicit
+  specification parsing; added deterministic John Lewis card parsing.
+- Empty databases now populate from current observations when
+  `ENABLE_LIVE_SCRAPING=true`, then refresh on a bounded background interval.
+  Failed runs preserve the last catalogue.
+- Observation records carry a 12-hour expiry, low-confidence `observed` state,
+  source URL, condition, checked time and a prominent verify-on-retailer
+  disclaimer. Retailer images and invented benchmark/security evidence are not
+  stored.
+- Public search and current-price endpoints now read the cached database only;
+  they do not turn user input into outbound fetches. Offers are ordered by total
+  known price.
+- Local live bootstrap returned 24 current products/offers across laptop,
+  tablet and desktop categories. The deterministic backend suite passes 13/13,
+  frontend contract tests 3/3, Vite production build passes, Playwright passes
+  8/8, Python compilation passes and `git diff --check` passes.
+
+This mode is useful staging data, not a retailer-authorised API feed or a claim
+of production readiness. Managed durable storage, formal retailer/provider
+terms, real benchmark and vulnerability evidence, operator OIDC/roles, backups
+and monitoring remain separate production gates.

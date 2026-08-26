@@ -28,6 +28,11 @@ must not be exposed to browser code or a public deployment.
 ## Outbound and catalogue names
 
 - `ENABLE_LIVE_SCRAPING`
+- `RETAILER_SEARCH_TERMS`
+- `RETAILER_RESULT_LIMIT`
+- `RETAILER_OBSERVATION_TTL_HOURS`
+- `RETAILER_REFRESH_INTERVAL_MINUTES`
+- `RETAILER_REQUEST_DELAY_SECONDS`
 - `IMAGE_PROXY_ALLOWED_HOSTS`
 - `IMAGE_PROXY_MAX_BYTES`
 - `RETAILER_ALLOWED_HOSTS`
@@ -38,10 +43,12 @@ must not be exposed to browser code or a public deployment.
 - `CATALOGUE_FEED_SOURCE_URL`
 - `CATALOGUE_REFRESH_SCHEDULE`
 
-Live scraping should remain disabled until source permissions and rate limits
-are approved. The application currently imports a reviewed local feed; the
-catalogue feed labels above are operational inventory names for the future
-provider job, not a request to add remote fetching.
+The staging host may enable the bounded retailer-observation collector. It uses
+fixed HTTPS search pages, no redirects, byte and time limits, a small fixed
+query list, and a scheduled cache refresh. These observations are not described
+as authorised retailer feeds and must be shown with a verify-before-purchase
+warning. Credentialled provider adapters remain disabled until separately
+approved.
 
 ## Host controls to record separately
 

@@ -13,7 +13,23 @@ services:
       - key: SERVE_FRONTEND_AT_ROOT
         value: "true"
       - key: ENABLE_LIVE_SCRAPING
+        value: "true"
+      - key: ALLOW_SAMPLE_DATA
         value: "false"
+      - key: LIVE_DATA_REQUIRED
+        value: "true"
+      - key: PROVIDER_SYNC_ENABLED
+        value: "false"
+      - key: RETAILER_SEARCH_TERMS
+        value: "laptop,tablet,desktop computer"
+      - key: RETAILER_RESULT_LIMIT
+        value: "8"
+      - key: RETAILER_OBSERVATION_TTL_HOURS
+        value: "12"
+      - key: RETAILER_REFRESH_INTERVAL_MINUTES
+        value: "360"
+      - key: RETAILER_REQUEST_DELAY_SECONDS
+        value: "0.5"
       - key: DATABASE_PATH
         value: /tmp/devices.db
       - key: PUBLIC_RATE_LIMIT

@@ -177,10 +177,12 @@ class SecurityBoundaryTests(unittest.TestCase):
         original_database = app_module.app.config['DATABASE_PATH']
         original_sample = app_module.app.config['ALLOW_SAMPLE_DATA']
         original_required = app_module.app.config['LIVE_DATA_REQUIRED']
+        original_observation = app_module.app.config['ENABLE_LIVE_SCRAPING']
         database = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
         database.close()
         try:
-            app_module.app.config.update(DATABASE_PATH=database.name, ALLOW_SAMPLE_DATA=False, LIVE_DATA_REQUIRED=True)
+            app_module.app.config.update(DATABASE_PATH=database.name, ALLOW_SAMPLE_DATA=False,
+                                         LIVE_DATA_REQUIRED=True, ENABLE_LIVE_SCRAPING=False)
             app_module.ensure_database_schema()
             client = app_module.app.test_client()
             status = client.get('/api/v1/catalogue/status')
@@ -192,7 +194,8 @@ class SecurityBoundaryTests(unittest.TestCase):
             self.assertIsNone(app_module.get_device_image_url('Unverified device'))
             self.assertEqual(client.post('/refresh-devices', headers={'Authorization': 'Bearer test-token'}).status_code, 503)
         finally:
-            app_module.app.config.update(DATABASE_PATH=original_database, ALLOW_SAMPLE_DATA=original_sample, LIVE_DATA_REQUIRED=original_required)
+            app_module.app.config.update(DATABASE_PATH=original_database, ALLOW_SAMPLE_DATA=original_sample,
+                                         LIVE_DATA_REQUIRED=original_required, ENABLE_LIVE_SCRAPING=original_observation)
             os.unlink(database.name)
 
     def test_provider_contract_is_disabled_without_network_fallback(self):
@@ -237,6 +240,68 @@ class SecurityBoundaryTests(unittest.TestCase):
             self.assertEqual(item['offers'][0]['total_price'], 820.0)
         finally:
             app_module.app.config['DATABASE_PATH'] = original_database
+            os.unlink(database.name)
+
+    def test_observation_refresh_is_current_sorted_and_preserves_data_on_failure(self):
+        import app as app_module
+
+        original = {
+            key: app_module.app.config[key]
+            for key in ('DATABASE_PATH', 'ALLOW_SAMPLE_DATA', 'ENABLE_LIVE_SCRAPING', 'LIVE_DATA_REQUIRED')
+        }
+        database = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        database.close()
+        observations = [
+            {
+                'name': 'Apple Test Laptop, 8GB RAM, 256GB SSD, 13”', 'brand': 'Apple',
+                'category': 'Laptops', 'cpu_speed': 0, 'ram': 8, 'storage': 256,
+                'screen_size': 13, 'price': 799, 'retailer': 'Amazon UK',
+                'product_url': 'https://www.amazon.co.uk/dp/B012345678',
+                'product_identifier': 'B012345678', 'condition': 'new',
+            },
+            {
+                'name': 'Apple Test Laptop, 8GB RAM, 256GB SSD, 13”', 'brand': 'Apple',
+                'category': 'Laptops', 'cpu_speed': 0, 'ram': 8, 'storage': 256,
+                'screen_size': 13, 'price': 699, 'retailer': 'John Lewis',
+                'product_url': 'https://www.johnlewis.com/apple-test-laptop/p12345',
+                'condition': 'new',
+            },
+        ]
+        try:
+            app_module.app.config.update(
+                DATABASE_PATH=database.name, ALLOW_SAMPLE_DATA=False,
+                ENABLE_LIVE_SCRAPING=False, LIVE_DATA_REQUIRED=True,
+            )
+            app_module.ensure_database_schema()
+            result = app_module.refresh_retailer_observation_catalogue(observations)
+            self.assertEqual(result['status'], 'completed')
+            self.assertEqual(result['item_count'], 1)
+
+            client = app_module.app.test_client()
+            status = client.get('/api/v1/catalogue/status').json
+            self.assertEqual(status['catalogue_state'], 'current')
+            self.assertEqual(status['catalogue_mode'], 'retailer_observation')
+            self.assertEqual(status['source_states']['observed'], 1)
+            item = client.get('/api/v1/devices').json['items'][0]
+            self.assertEqual(item['catalogue']['source_state'], 'observed')
+            self.assertEqual(item['data_quality']['price_state'], 'observed')
+            self.assertEqual([offer['total_price'] for offer in item['offers']], [699.0, 799.0])
+            cached_search = client.post('/search-live', json={'query': 'Test Laptop', 'max_results': 10})
+            self.assertEqual(cached_search.status_code, 200)
+            self.assertEqual(cached_search.json['total_found'], 1)
+            cheapest = client.post('/get-current-price', json={'device_name': 'Apple Test Laptop'})
+            self.assertEqual(cheapest.status_code, 200)
+            self.assertEqual(cheapest.json['retailer'], 'John Lewis')
+            self.assertEqual(cheapest.json['total_price'], 699.0)
+            conn = __import__('sqlite3').connect(database.name)
+            self.assertIsNone(conn.execute('SELECT image_url FROM devices LIMIT 1').fetchone()[0])
+            conn.close()
+
+            failed = app_module.refresh_retailer_observation_catalogue([])
+            self.assertEqual(failed['status'], 'no_results')
+            self.assertEqual(client.get('/api/v1/catalogue/status').json['product_count'], 1)
+        finally:
+            app_module.app.config.update(**original)
             os.unlink(database.name)
 
     def test_graphviz_is_optional_for_flowchart_generation(self):
