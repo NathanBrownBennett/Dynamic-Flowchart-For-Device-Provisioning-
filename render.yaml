@@ -44,3 +44,5 @@ services:
         value: "32768"
       - key: IMAGE_PROXY_MAX_BYTES
         value: "5242880"
+      - key: IMAGE_PROXY_ALLOWED_HOSTS
+        value: m.media-amazon.com,images-na.ssl-images-amazon.com,media.johnlewiscontent.com

@@ -207,8 +207,10 @@ Implemented and locally verified:
   Failed runs preserve the last catalogue.
 - Observation records carry a 12-hour expiry, low-confidence `observed` state,
   source URL, condition, checked time and a prominent verify-on-retailer
-  disclaimer. Retailer images and invented benchmark/security evidence are not
-  stored.
+  disclaimer. Retailer product-card images are retained only from explicit
+  Amazon/John Lewis CDN hosts and served through the bounded same-origin image
+  proxy; failed or missing images are labelled unavailable. Invented
+  benchmark/security evidence is not stored.
 - Public search and current-price endpoints now read the cached database only;
   they do not turn user input into outbound fetches. Offers are ordered by total
   known price.

@@ -25,6 +25,7 @@ test.describe('Device Provisioning Toolkit - interactive pilot', () => {
 
     await expect(page.getByRole('heading', { name: /Current catalogue/i })).toBeVisible();
     await expect(page.locator('.device-card').first()).toBeVisible();
+    await expect(page.locator('.device-card').first().getByRole('img')).toBeVisible();
     await expect(page.locator('.score').first()).toContainText('%');
   });
 
@@ -35,6 +36,8 @@ test.describe('Device Provisioning Toolkit - interactive pilot', () => {
     await page.getByRole('button', { name: /Show recommendations/i }).click();
     await page.locator('.device-card').first().getByRole('button', { name: /Review device/i }).click();
 
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect(page.locator('.device-image-detail')).toBeVisible();
     await expect(page.getByText(/Recommendation for: Business · privileged admin/i)).toBeVisible();
     await expect(page.getByRole('heading', { name: /Evidence and limits/i })).toBeVisible();
     await page.getByRole('tab', { name: /Security/i }).click();

@@ -77,6 +77,18 @@ class DeviceDataScraper:
         return absolute
 
     @staticmethod
+    def _image_url(value, base_url, allowed_hosts):
+        """Normalise only retailer image URLs from explicitly trusted CDNs."""
+        absolute = urljoin(base_url, str(value or '').strip())
+        if len(absolute) > 2048:
+            return None
+        parsed = urlparse(absolute)
+        if (parsed.scheme != 'https' or parsed.username or parsed.password or
+                (parsed.hostname or '').lower() not in allowed_hosts):
+            return None
+        return absolute
+
+    @staticmethod
     def _brand_from_title(title):
         known = ('Acer', 'Apple', 'ASUS', 'Dell', 'Google', 'HP', 'Huawei', 'Lenovo',
                  'Microsoft', 'MSI', 'Samsung')
@@ -205,7 +217,11 @@ class DeviceDataScraper:
             
             # Image
             img_elem = product.find('img', class_='s-image')
-            image_url = img_elem.get('src') if img_elem else None
+            image_url = self._image_url(
+                img_elem.get('src') if img_elem else None,
+                'https://www.amazon.co.uk/',
+                {'m.media-amazon.com', 'images-na.ssl-images-amazon.com'},
+            )
             
             # Category determination
             category = self.determine_category(name)
@@ -271,6 +287,12 @@ class DeviceDataScraper:
             )
             if not name or price is None or not product_url or not self._is_device_title(name):
                 return None
+            image_elem = product.select_one('img[data-testid="product-image"]')
+            image_url = self._image_url(
+                image_elem.get('src') if image_elem else None,
+                'https://www.johnlewis.com/',
+                {'media.johnlewiscontent.com'},
+            )
             cpu_speed, ram, storage, screen_size = self.extract_specs_from_text(name, use_defaults=False)
             return {
                 'name': name[:160],
@@ -280,7 +302,7 @@ class DeviceDataScraper:
                 'storage': storage,
                 'screen_size': screen_size,
                 'price': price,
-                'image_url': None,
+                'image_url': image_url,
                 'source': 'John Lewis',
                 'retailer': 'John Lewis',
                 'product_url': product_url,

@@ -57,7 +57,7 @@ class SecurityBoundaryTests(unittest.TestCase):
         self.app.config['IMAGE_PROXY_MAX_BYTES'] = 5
         with patch('app._is_public_hostname', return_value=True), patch('app.requests.get', return_value=FakeResponse()):
             response = self.app.test_client().get(
-                '/api/image-proxy?url=https://images.unsplash.com/image.png'
+                '/api/image-proxy?url=https://media.johnlewiscontent.com/image.png'
             )
         self.assertEqual(response.status_code, 413)
 
@@ -259,6 +259,7 @@ class SecurityBoundaryTests(unittest.TestCase):
                 'category': 'Laptops', 'cpu_speed': 0, 'ram': 8, 'storage': 256,
                 'screen_size': 13, 'price': 799, 'retailer': 'Amazon UK',
                 'product_url': 'https://www.amazon.co.uk/dp/B012345678',
+                'image_url': 'https://m.media-amazon.com/images/I/test-device.jpg',
                 'product_identifier': 'B012345678', 'condition': 'new',
             },
             {
@@ -300,8 +301,12 @@ class SecurityBoundaryTests(unittest.TestCase):
             self.assertEqual(cheapest.status_code, 200)
             self.assertEqual(cheapest.json['retailer'], 'John Lewis')
             self.assertEqual(cheapest.json['total_price'], 699.0)
+            self.assertTrue(item['image'].startswith('/api/image-proxy?url='))
             conn = __import__('sqlite3').connect(database.name)
-            self.assertIsNone(conn.execute('SELECT image_url FROM devices LIMIT 1').fetchone()[0])
+            self.assertEqual(
+                conn.execute('SELECT image_url FROM devices LIMIT 1').fetchone()[0],
+                'https://m.media-amazon.com/images/I/test-device.jpg',
+            )
             conn.close()
 
             failed = app_module.refresh_retailer_observation_catalogue([])

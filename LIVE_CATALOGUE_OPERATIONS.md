@@ -30,14 +30,25 @@ starts and then on the configured background interval. The public search and
 price routes read the cached database and never trigger an outbound request.
 
 The collector accepts no user-supplied URL, follows no redirects, enforces
-timeouts and a response-size ceiling, limits search terms and results, stores
-no retailer images, and preserves the previous catalogue when a run fails.
+timeouts and a response-size ceiling, limits search terms and results, and
+preserves the previous catalogue when a run fails. Product-card images are
+accepted only from the fixed Amazon and John Lewis image CDN allowlist. Their
+original HTTPS URLs are stored with the observed record, but browsers receive
+them through the bounded same-origin image proxy (allowlist, public-DNS check,
+timeout, content-type check and five-megabyte ceiling). Missing or failed images
+are labelled unavailable; the service does not generate substitute product
+photographs.
 It also preserves the previous catalogue when a refresh returns less than the
 configured `RETAILER_MIN_REFRESH_RATIO`, preventing a partial retailer response
 from replacing a fuller last-known catalogue.
 Every record is labelled `observed`, low confidence and unofficial, with a
 verify-before-purchase warning. Currys is not collected because its pages reject
 the bounded request; no bypass is attempted.
+
+Retailer-hosted images are for product identification in this pilot. Their
+usage rights have not been independently verified by BStudioB, and the device
+view tells users to verify the exact colour and configuration on the retailer
+page. A production catalogue agreement must explicitly cover image use.
 
 This makes the staging catalogue useful without inventing prices, but it is not
 a retailer-authorised product feed. Credentialled provider activation remains

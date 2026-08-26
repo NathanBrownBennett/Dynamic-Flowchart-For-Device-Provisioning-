@@ -18,7 +18,7 @@ import functools
 import hmac
 import ipaddress
 import socket
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from werkzeug.middleware.proxy_fix import ProxyFix
 from integrations.providers import provider_descriptors
 from integrations.worker import run_provider
@@ -68,6 +68,11 @@ RATE_LIMIT_LAST_SWEEP = 0.0
 RETAILER_REFRESH_LOCK = threading.Lock()
 RETAILER_REFRESH_THREAD = None
 SCORE_VERSION = 'v3-evidence-gated-readiness'
+DEFAULT_IMAGE_PROXY_HOSTS = (
+    'm.media-amazon.com,images-na.ssl-images-amazon.com,'
+    'media.johnlewiscontent.com'
+)
+OUTBOUND_USER_AGENT = 'BStudioB-Device-Provisioning-Toolkit/1.0 (+https://provisioning.bstudiob.co.uk/)'
 SUPPORTED_OPERATING_SYSTEMS = ('Windows 11', 'macOS', 'ChromeOS', 'Android', 'iPadOS', 'Linux')
 USE_CASES = ('Personal', 'Work', 'Government')
 WORK_PROFILES = ('general_office', 'remote_worker', 'developer', 'privileged_admin', 'field_worker')
@@ -109,6 +114,19 @@ def _allowed_outbound_url(value, env_name, default_hosts):
     if not _is_public_hostname(hostname):
         return None
     return parsed
+
+
+def _accepted_image_url(value):
+    """Accept an image reference only when its HTTPS host is operator-approved."""
+    raw_url = str(value or '').strip()
+    if not raw_url or len(raw_url) > 2048:
+        return None
+    parsed = urlparse(raw_url)
+    hostname = (parsed.hostname or '').lower().rstrip('.')
+    if (parsed.scheme != 'https' or not hostname or parsed.username or parsed.password or
+            hostname not in _env_hosts('IMAGE_PROXY_ALLOWED_HOSTS', DEFAULT_IMAGE_PROXY_HOSTS)):
+        return None
+    return parsed.geturl()
 
 
 def public_rate_limited(view):
@@ -1745,6 +1763,7 @@ def build_retailer_observation_feed(observations=None):
                 }):
             continue
         brand = str(observation.get('brand') or name.split(' ', 1)[0]).strip()[:80] or 'Unknown'
+        image_url = _accepted_image_url(observation.get('image_url'))
         key = re.sub(r'[^a-z0-9]+', ' ', name.lower()).strip()
         offer = {
             'provider': 'retailer_page_observation', 'vendor': retailer,
@@ -1762,6 +1781,8 @@ def build_retailer_observation_feed(observations=None):
             if not any(item['vendor'] == retailer and item['url'] == product_url for item in existing['offers']):
                 existing['offers'].append(offer)
             existing['price'] = min(existing['price'], price)
+            if not existing.get('image_url') and image_url:
+                existing['image_url'] = image_url
             continue
         products_by_name[key] = {
             'name': name, 'brand': brand, 'model': name,
@@ -1777,7 +1798,10 @@ def build_retailer_observation_feed(observations=None):
             'source_license': disclaimer, 'confidence': 'low',
             'freshness_hours': app.config['RETAILER_OBSERVATION_TTL_HOURS'],
             'operating_system': _observed_operating_system(name),
-            'image_url': None, 'source_state': 'observed', 'offers': [offer],
+            'image_url': image_url,
+            'image_license': ('Retailer-hosted product image; usage rights have not been '
+                              'independently verified by BStudioB.'),
+            'source_state': 'observed', 'offers': [offer],
         }
     payload = {
         'source': 'Retailer page observations',
@@ -2334,9 +2358,10 @@ def ensure_database_schema():
         populate_database_with_real_data()
 
 def get_device_image_url(device_name, scraped_url=None):
-    """Return a licensed HTTPS image URL, or no image when evidence is absent."""
-    if scraped_url and urlparse(str(scraped_url)).scheme == 'https' and urlparse(str(scraped_url)).hostname:
-        return scraped_url
+    """Return a same-origin proxy URL, or no image when evidence is absent."""
+    accepted_url = _accepted_image_url(scraped_url)
+    if accepted_url:
+        return f'/api/image-proxy?url={quote(accepted_url, safe="")}'
     # Fixture imagery is intentionally opt-in and is never emitted by the
     # default production configuration.
     return '/static/images/1.jpg' if app.config.get('ALLOW_SAMPLE_DATA') else None
@@ -2359,13 +2384,19 @@ def image_proxy():
         parsed = _allowed_outbound_url(
             image_url,
             'IMAGE_PROXY_ALLOWED_HOSTS',
-            'm.media-amazon.com,images-na.ssl-images-amazon.com,images.unsplash.com'
+            DEFAULT_IMAGE_PROXY_HOSTS
         )
         # Only public HTTPS hosts explicitly allowlisted by the operator are fetched.
         if not parsed:
             return "Invalid image URL", 400
         
-        response = requests.get(image_url, timeout=(3, 5), allow_redirects=False, stream=True)
+        response = requests.get(
+            image_url,
+            headers={'User-Agent': OUTBOUND_USER_AGENT},
+            timeout=(3, 5),
+            allow_redirects=False,
+            stream=True,
+        )
         response.raise_for_status()
         content_type = response.headers.get('Content-Type', '').split(';', 1)[0].lower()
         if content_type not in {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}:

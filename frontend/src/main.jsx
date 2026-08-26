@@ -87,13 +87,23 @@ function VendorOffers({ device }) {
   return <section className="comparison-box vendor-box"><div className="section-heading"><div><h3>Vendor offers</h3><p className="small-note">Observed offers are sorted by total known cost. Verify stock and final price on the retailer site.</p></div><span className="offer-count">{offers.length} checked</span></div><div className="offer-list">{offers.map((offer, index) => <a className="offer-row" key={`${offer.vendor}-${offer.url}`} href={offer.url} target="_blank" rel="noreferrer noopener"><span className="offer-rank">{index + 1}</span><span className="offer-vendor"><strong>{offer.vendor}</strong><small>{offer.availability} · {offerFreshness(offer)}{offer.is_affiliate ? ' · affiliate link' : ''}{offer.is_sponsored ? ' · sponsored' : ''}</small></span><strong className="offer-price">{formatPrice(offer)} <span>↗</span></strong></a>)}</div></section>
 }
 
+function DeviceImage({ device, variant = 'card' }) {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [device.image])
+  const className = `device-image device-image-${variant}`
+  if (!device.image || failed) {
+    return <div className={`${className} device-image-placeholder`} role="img" aria-label={`Product image unavailable for ${device.name}`}><span aria-hidden="true">▣</span><small>Image unavailable</small></div>
+  }
+  return <img className={className} src={device.image} alt={`${device.name} product image`} loading={variant === 'card' ? 'lazy' : 'eager'} onError={() => setFailed(true)} />
+}
+
 function DeviceCard({ device, onSelect }) {
   const score = device.security?.score ?? null
   const level = device.security?.level || 'Unrated'
   const offer = currentOffer(device)
   return <article className="device-card">
+    <DeviceImage device={device} />
     <div className="device-card-top">
-      {device.image && <img className="device-thumb" src={device.image} alt={`${device.name} thumbnail`} loading="lazy" />}
       <div><span className="eyebrow">{device.category}</span><h3>{device.name}</h3></div>
       <span className={`score score-${level.toLowerCase()}`}>{scoreValue(score, '%')}</span>
     </div>
@@ -135,7 +145,7 @@ function DeviceDetail({ device, comparisons, context, detailTab, onTabChange, on
   }
   return <section className="detail-view" aria-labelledby="device-review-heading">
     <div className="back-row"><button className="back-button" onClick={onBack}>← Back to recommendations</button><span className="eyebrow">Device review</span></div>
-    <div className="detail-title"><div><h1 id="device-review-heading">{device.name}</h1><p className="lead">{device.os} · {device.cpu_vendor} · {device.category}</p></div><button className="secondary" onClick={downloadSummary}>Download summary</button></div>
+    <div className="detail-hero"><DeviceImage device={device} variant="detail" /><div className="detail-title"><div><h1 id="device-review-heading" className={device.name.length > 90 ? 'long-title' : ''}>{device.name}</h1><p className="lead">{device.os} · {device.cpu_vendor} · {device.category}</p><p className="image-note">Retailer product image · verify the exact colour and configuration on the vendor page.</p></div><button className="secondary" onClick={downloadSummary}>Download summary</button></div></div>
     <div className="context-row"><div className="context-pill">Recommendation for: <strong>{context.use_case === 'Work' ? 'Business' : context.use_case}</strong>{context.work_profile && context.use_case === 'Work' ? ` · ${context.work_profile.replaceAll('_', ' ')}` : ''}</div><span className="freshness-note">{catalogue.source || 'Source unavailable'} · {freshnessLabel(catalogue)}</span></div>
     <div className="metric-row"><Metric label="Security score" value={`${scoreValue(security.score, '%')} · ${security.level || 'Unrated'}`} /><Metric label="Lowest observed price" value={currentOffer(device) ? formatPrice(currentOffer(device)) : 'Not observed'} /><Metric label="Memory" value={specValue(device.ram, 'GB', 'Not listed')} /><Metric label="Storage" value={specValue(device.storage, 'GB', 'Not listed')} /></div>
     <DetailTabs active={detailTab} onChange={onTabChange} />
@@ -172,7 +182,11 @@ function App() {
   const [error, setError] = useState('')
 
   const context = useMemo(() => filters.use_case === 'Work' ? { use_case: filters.use_case, work_profile: filters.work_profile } : { use_case: filters.use_case }, [filters.use_case, filters.work_profile])
-  const navigate = (view, id = null) => { window.location.hash = view === 'detail' ? `device/${id}` : view; setRoute({ view, id }) }
+  const navigate = (view, id = null) => {
+    window.location.hash = view === 'detail' ? `device/${id}` : view
+    setRoute({ view, id })
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }
   const load = async (values = filters) => {
     setLoading(true); setError('')
     try {
