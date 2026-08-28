@@ -240,3 +240,63 @@ and monitoring remain separate production gates.
   runtime dependency audits report no known vulnerabilities.
 - The public pilot remains staging-grade pending the production gates documented
   in `SECURITY_ASSESSMENT.md`.
+
+## Catalogue evidence completion pass (2026-08-27)
+
+Implemented locally:
+
+- Added read-only catalogue profiling for identity completeness, source
+  attribution, current offers, vendor diversity, image licensing, OS coverage,
+  benchmark coverage, model-linked security evidence and support lifecycle.
+- Added strict importer checks for duplicate product identities, timezone-aware
+  evidence dates, future-dated records, support/product OS mismatches and
+  inconsistent item-plus-delivery totals.
+- Added `DATA_ACQUISITION_RUNBOOK.md` with the source-by-source activation
+  boundary and the exact operator import/profile commands.
+- Added deterministic quality-profile tests covering incomplete schema,
+  evidence coverage and the multi-vendor gate.
+
+This pass does not create or invent live catalogue records. The current hosted
+catalogue still requires approved product/offer sources, benchmark licences or
+controlled measurements, manufacturer support records, and model-matched
+security evidence before ratings can be published. Amazon and eBay access also
+requires their account/API approval; credentials must be supplied by the owner
+through the host environment when that gate is approved. Retailer scraping
+remains disabled by default.
+
+## Optional provider adapters (2026-08-28)
+
+Implemented locally:
+
+- Added an opt-in SerpApi Amazon UK adapter for bounded structured search
+  results, prices, links and provider-returned thumbnails. SerpApi's current
+  free plan is limited to 250 searches per month; it is not an unlimited free
+  catalogue service.
+- Added an opt-in eBay Browse adapter using application OAuth and UK
+  marketplace filtering. Production Buy API access remains subject to eBay's
+  programme and terms.
+- Added an opt-in OSV.dev adapter for package vulnerability evidence. OSV
+  records are not model-specific hardware evidence and cannot unlock a device
+  rating.
+- Added `scripts/fetch_provider.py` to create a local, validated review draft;
+  it never imports records automatically and does not write provider keys.
+- Added names-only host environment entries and provider activation guidance.
+
+Verification completed: Python tests 27/27, frontend contract tests 3/3, Vite
+production build, Playwright browser tests 8/8, Python compilation and
+`git diff --check`. A live no-key OSV query for Flask 3.1.3 completed and
+returned zero matching records. No provider credentials were used, and no
+hosting, DNS, publication or deployment changes were made.
+
+The resulting provider drafts still require operator review of identity,
+licensing, attribution, currency, delivery, freshness and source terms before
+an explicit import. They do not yet provide the complete multi-vendor,
+model-linked benchmark, support-lifecycle and security-evidence catalogue.
+
+## Provider configuration preparation (2026-08-28)
+
+Updated `.env.example` and `DEPLOYMENT.md` with the provider settings. Safe
+search terms and result limits have non-secret defaults; API keys, client
+secrets and Amazon credentials remain blank and approval-gated. No host
+environment was changed. `PROVIDER_SYNC_ENABLED` remains false until the
+owner completes provider approval and secret entry in the hosting dashboard.

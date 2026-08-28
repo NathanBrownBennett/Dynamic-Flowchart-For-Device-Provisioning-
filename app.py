@@ -712,6 +712,22 @@ def _normalise_work_profile(value):
     return value if value in WORK_PROFILES else 'general_office'
 
 
+def _has_https_attribution(value):
+    parsed = urlparse(str(value or ''))
+    return bool(
+        parsed.scheme == 'https' and parsed.hostname and
+        not parsed.username and not parsed.password
+    )
+
+
+def _has_attributed_timestamp(record, field_name):
+    try:
+        _parse_utc_timestamp(record.get(field_name), field_name)
+        return True
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
 def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'general_office',
                       security_evidence_by_id=None, benchmark_evidence_by_id=None,
                       support_by_id=None):
@@ -743,14 +759,31 @@ def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'ge
             'operating_system': d.get('operating_system'), 'source_state': d.get('source_state'),
         }
         inferred_os, cpu_vendor = infer_os_and_cpu(device['name'] or '', device.get('category') or '')
-        os = device.get('operating_system') or inferred_os
+        explicit_os = device.get('operating_system')
+        os = explicit_os or inferred_os
         os = os if os in SUPPORTED_OPERATING_SYSTEMS else 'Unknown'
         security_evidence = security_evidence_by_id.get(device.get('id'), [])
         benchmark_evidence = benchmark_evidence_by_id.get(device.get('id'), [])
         support = support_by_id.get(device.get('id'))
+        rated_security_evidence = [
+            record for record in security_evidence
+            if isinstance(record, dict) and record.get('provider') and
+            (record.get('cve_id') or record.get('cpe') or record.get('cpe_name')) and
+            _has_https_attribution(record.get('source_url')) and
+            _has_attributed_timestamp(record, 'checked_at')
+        ]
         source_state = device.get('source_state') or 'unknown'
         fixture_mode = source_state == 'sample' and app.config.get('ALLOW_SAMPLE_DATA')
-        evidence_ready = bool(os != 'Unknown' and security_evidence and support)
+        support_os = str((support or {}).get('operating_system') or '').strip()
+        support_ready = bool(
+            isinstance(support, dict) and support_os == explicit_os and
+            support.get('support_until') and _has_https_attribution(support.get('source_url')) and
+            _has_attributed_timestamp(support, 'checked_at')
+        )
+        evidence_ready = bool(
+            explicit_os in SUPPORTED_OPERATING_SYSTEMS and
+            rated_security_evidence and support_ready
+        )
         if fixture_mode or evidence_ready:
             if fixture_mode:
                 findings, mitigations = detect_known_vulnerabilities(os, cpu_vendor, device['name'] or '')
@@ -758,11 +791,11 @@ def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'ge
                 findings = [
                     f"{record.get('cve_id') or record.get('cpe') or 'Security record'}: "
                     f"{record.get('summary') or 'review the linked evidence'}"
-                    for record in security_evidence
+                    for record in rated_security_evidence
                 ]
                 mitigations = ['Confirm affected and fixed versions against the linked source before deployment.']
             score, level, score_details = compute_security_score(
-                device, os, cpu_vendor, use_case, security_evidence=security_evidence,
+                device, os, cpu_vendor, use_case, security_evidence=rated_security_evidence,
                 support=support, allow_fixture_estimate=fixture_mode,
             )
             evidence_quality = 'fixture_estimate' if fixture_mode else 'evidence_gated_heuristic'
@@ -840,7 +873,7 @@ def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'ge
             'score_version': SCORE_VERSION,
         }
         device['evidence_completeness'] = {
-            'explicit_operating_system': os != 'Unknown',
+            'explicit_operating_system': explicit_os in SUPPORTED_OPERATING_SYSTEMS,
             'security_evidence': bool(security_evidence),
             'support_lifecycle': bool(support),
             'benchmark_evidence': bool(benchmark_evidence),
@@ -1209,7 +1242,7 @@ def _api_catalogue(filters):
     security_map = _evidence_map('security_evidence', device_ids)
     support_map = _support_map(device_ids)
     matched = [
-        _api_device(row, filters['use_case'], filters['work_profile'], metadata_map.get(row[0]),
+        _api_device(row, filters['use_case'], filters['work_profile'], metadata_map.get(row[0], {}),
                     offers_map.get(row[0], []), benchmark_map.get(row[0], []),
                     security_map.get(row[0], []), support_map.get(row[0], {}))
         for row in rows
@@ -2014,7 +2047,11 @@ def validate_catalogue_feed(payload):
         if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password:
             raise ValueError('source_url must be an HTTPS attribution URL without credentials')
     retrieved_at = _normalise_timestamp(str(payload.get('retrieved_at') or _utc_now()), 'retrieved_at')
+    retrieved_dt = _parse_utc_timestamp(retrieved_at, 'retrieved_at')
+    if retrieved_dt > datetime.now(timezone.utc) + timedelta(minutes=5):
+        raise ValueError('retrieved_at cannot be in the future')
     normalised = []
+    identity_keys = set()
     for index, product in enumerate(products):
         if not isinstance(product, dict):
             raise ValueError(f'product {index + 1} must be an object')
@@ -2063,10 +2100,19 @@ def validate_catalogue_feed(payload):
             }
         except (KeyError, TypeError, ValueError):
             raise ValueError(f'product {index + 1} has invalid fields')
+        identity = item['identity']
+        identity_key = tuple(str(identity.get(field) or '').strip().lower() for field in (
+            'brand', 'model', 'variant', 'mpn', 'gtin', 'region'
+        ))
+        if identity_key in identity_keys:
+            raise ValueError(f'product {index + 1} duplicates another product identity')
+        identity_keys.add(identity_key)
         item['price_checked_at'] = _normalise_timestamp(
             item['price_checked_at'], f'product {index + 1} price_checked_at'
         )
         checked_dt = _parse_utc_timestamp(item['price_checked_at'], 'price_checked_at')
+        if checked_dt > retrieved_dt + timedelta(minutes=5):
+            raise ValueError(f'product {index + 1} price_checked_at cannot be after feed retrieval')
         if item['expires_at'] is None:
             item['expires_at'] = (checked_dt + timedelta(hours=app.config['CATALOGUE_TTL_HOURS'])).isoformat()
         else:
@@ -2097,6 +2143,8 @@ def validate_catalogue_feed(payload):
             item['source_state'] = 'reviewed'
         if item['confidence'] == 'high':
             item['confidence'] = 'medium'
+        if item['evidence_quality'] == 'independent':
+            item['evidence_quality'] = 'reviewed'
         if item['image_url']:
             image_url = urlparse(str(item['image_url']))
             if image_url.scheme != 'https' or not image_url.hostname or image_url.username or image_url.password:
@@ -2125,6 +2173,10 @@ def validate_catalogue_feed(payload):
                 f'product {index + 1} offer {offer_index + 1} checked_at',
             )
             checked_offer_dt = _parse_utc_timestamp(checked_at, 'checked_at')
+            if checked_offer_dt > retrieved_dt + timedelta(minutes=5):
+                raise ValueError(
+                    f'product {index + 1} offer {offer_index + 1} checked_at cannot be after feed retrieval'
+                )
             expires_at = offer.get('expires_at')
             if expires_at is None:
                 expires_at = (checked_offer_dt + timedelta(hours=app.config['OFFER_TTL_HOURS'])).isoformat()
@@ -2152,6 +2204,14 @@ def validate_catalogue_feed(payload):
                             raise ValueError
                     except (TypeError, ValueError):
                         raise ValueError(f'product {index + 1} offer {offer_index + 1} has invalid {money_name}')
+            item_price = float(offer['item_price']) if offer.get('item_price') is not None else price
+            delivery_price = float(offer['delivery_price']) if offer.get('delivery_price') is not None else None
+            total_price = float(offer['total_price']) if offer.get('total_price') is not None else None
+            if (total_price is not None and item_price is not None and delivery_price is not None and
+                    not math.isclose(total_price, item_price + delivery_price, abs_tol=0.02)):
+                raise ValueError(
+                    f'product {index + 1} offer {offer_index + 1} total_price does not match item plus delivery'
+                )
             offers.append({
                 'vendor': vendor, 'url': str(url), 'price': price,
                 'provider': str(offer.get('provider') or source)[:80],
@@ -2159,9 +2219,9 @@ def validate_catalogue_feed(payload):
                 'affiliate_url': offer.get('affiliate_url'),
                 'product_identifier': str(offer.get('product_identifier') or item['identity']['gtin'] or item['identity']['mpn'] or item['identity']['model'])[:120],
                 'condition': str(offer.get('condition') or 'new')[:30],
-                'item_price': float(offer['item_price']) if offer.get('item_price') is not None else price,
-                'delivery_price': float(offer['delivery_price']) if offer.get('delivery_price') is not None else None,
-                'total_price': float(offer['total_price']) if offer.get('total_price') is not None else None,
+                'item_price': item_price,
+                'delivery_price': delivery_price,
+                'total_price': total_price,
                 'stock_message': str(offer.get('stock_message') or '')[:160] or None,
                 'source_license': str(offer.get('source_license') or item['source_license'] or '')[:200] or None,
                 'is_affiliate': bool(offer.get('is_affiliate')),
@@ -2191,6 +2251,10 @@ def validate_catalogue_feed(payload):
             evidence['tested_at'] = _normalise_timestamp(
                 evidence.get('tested_at'), f'product {index + 1} benchmark tested_at'
             )
+            if _parse_utc_timestamp(evidence['tested_at'], 'benchmark tested_at') > retrieved_dt + timedelta(minutes=5):
+                raise ValueError(f'product {index + 1} benchmark tested_at cannot be after feed retrieval')
+            if evidence.get('confidence', 'medium') not in {'high', 'medium', 'low', 'unknown'}:
+                raise ValueError(f'product {index + 1} has invalid benchmark confidence')
             if evidence.get('confidence') == 'high':
                 evidence['confidence'] = 'medium'
         if not isinstance(item['security_evidence'], list) or len(item['security_evidence']) > 50:
@@ -2208,6 +2272,10 @@ def validate_catalogue_feed(payload):
             evidence['checked_at'] = _normalise_timestamp(
                 evidence.get('checked_at'), f'product {index + 1} security evidence checked_at'
             )
+            if _parse_utc_timestamp(evidence['checked_at'], 'security evidence checked_at') > retrieved_dt + timedelta(minutes=5):
+                raise ValueError(f'product {index + 1} security evidence checked_at cannot be after feed retrieval')
+            if evidence.get('confidence', 'medium') not in {'high', 'medium', 'low', 'unknown'}:
+                raise ValueError(f'product {index + 1} has invalid security evidence confidence')
             if evidence.get('confidence') == 'high':
                 evidence['confidence'] = 'medium'
         support = item.get('support_lifecycle')
@@ -2219,12 +2287,20 @@ def validate_catalogue_feed(payload):
                     parsed_support_url.username or parsed_support_url.password):
                 raise ValueError(f'product {index + 1} has invalid support source_url')
             try:
-                datetime.fromisoformat(str(support['support_until']).replace('Z', '+00:00'))
+                support['support_until'] = _normalise_timestamp(
+                    str(support['support_until']), f'product {index + 1} support_until'
+                )
             except (TypeError, ValueError):
                 raise ValueError(f'product {index + 1} has invalid support_until')
             support['checked_at'] = _normalise_timestamp(
                 support.get('checked_at'), f'product {index + 1} support checked_at'
             )
+            if _parse_utc_timestamp(support['checked_at'], 'support checked_at') > retrieved_dt + timedelta(minutes=5):
+                raise ValueError(f'product {index + 1} support checked_at cannot be after feed retrieval')
+            if support['operating_system'] != item['operating_system']:
+                raise ValueError(f'product {index + 1} support operating_system must match the product OS')
+            if support.get('confidence', 'medium') not in {'high', 'medium', 'low', 'unknown'}:
+                raise ValueError(f'product {index + 1} has invalid support confidence')
             if support.get('confidence') == 'high':
                 support['confidence'] = 'medium'
         if (not item['name'] or not item['category'] or
@@ -2692,11 +2768,8 @@ HARDENING_COMMANDS = {
     }
 }
 
-def sanitize_task_id(label: str) -> str:
-    return re.sub(r'[^a-z0-9_]+', '', label.lower().replace(' ', '_'))
-
 def build_hardening_script(os_name: str, task_ids: list):
-    os_group = str(os_name or '').strip()
+    os_group = os_name if isinstance(os_name, str) else ''
     if os_group not in HARDENING_COMMANDS:
         raise ValueError('Unsupported operating system')
     commands_map = HARDENING_COMMANDS.get(os_group, {})
@@ -2738,25 +2811,27 @@ def build_hardening_script(os_name: str, task_ids: list):
 def generate_hardening_script():
     try:
         form_tasks = request.form.getlist('tasks')
-        os_name = str(request.form.get('os', '') or '').strip()
+        os_name = request.form.get('os', '')
         device_id = str(request.form.get('device_id') or 'unknown')
-        if os_name not in HARDENING_COMMANDS:
+        if not isinstance(os_name, str) or os_name not in HARDENING_COMMANDS:
             return Response('Unsupported operating system.', mimetype='text/plain', status=400)
 
-        # Whitelist tasks by sanitization & presence in mapping
-        normalized = []
+        # Accept only the exact identifiers emitted by the frontend. Normalising
+        # attacker-controlled values can turn an invalid value into a valid task.
+        selected_tasks = []
         valid_map = HARDENING_COMMANDS[os_name]
+        if len(form_tasks) > len(valid_map):
+            return Response('Too many hardening tasks selected.', mimetype='text/plain', status=400)
         for t in form_tasks:
-            tid = sanitize_task_id(t)
-            if tid not in valid_map:
+            if not isinstance(t, str) or t not in valid_map or t in selected_tasks:
                 return Response('Unsupported hardening task.', mimetype='text/plain', status=400)
-            normalized.append(tid)
+            selected_tasks.append(t)
 
-        if not normalized:
+        if not selected_tasks:
             return Response('No valid tasks selected.', mimetype='text/plain', status=400)
 
-        script, ext = build_hardening_script(os_name, normalized)
-        safe_device_id = device_id if device_id.isdigit() else 'unknown'
+        script, ext = build_hardening_script(os_name, selected_tasks)
+        safe_device_id = device_id if re.fullmatch(r'[0-9]{1,18}', device_id) else 'unknown'
         fname = f'hardening_device_{safe_device_id}.{ext}'
         return Response(
             script,

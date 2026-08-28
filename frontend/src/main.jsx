@@ -38,7 +38,15 @@ function scoreCopy(level, score) {
 }
 
 function scoreValue(score, suffix = '') {
-  return score == null ? 'Not rated' : `${score}${suffix}`
+  return score == null ? 'Awaiting evidence' : `${score}${suffix}`
+}
+
+function osLabel(value) {
+  return value && value !== 'Unknown' ? value : 'OS not confirmed'
+}
+
+function cpuLabel(value) {
+  return value && value !== 'Unknown' ? value : 'Processor not listed'
 }
 
 function descendingRated(first, second) {
@@ -81,10 +89,53 @@ function offerFreshness(offer) {
   return `Checked ${offer.checked_at.slice(0, 10)}`
 }
 
+const baselineHardening = {
+  'Windows 11': [
+    ['Install updates', 'Open Windows Update and install system, driver and security updates. Restart when asked.', 'The update screen should show that no important updates are waiting.'],
+    ['Turn on device encryption', 'Turn on BitLocker or Device encryption and save the recovery key in a separate, trusted place.', 'Check that encryption is shown as on and that the recovery key is safely available.'],
+    ['Use a standard account every day', 'Keep a separate administrator account for setup and maintenance. Use a standard account for normal work.', 'A normal work session should not need administrator approval for routine tasks.'],
+    ['Protect sign-in and web use', 'Turn on Windows Security, the firewall and SmartScreen. Use MFA for Microsoft and administrator accounts.', 'Windows Security should show no unresolved warnings and MFA should be enabled on important accounts.'],
+  ],
+  macOS: [
+    ['Install updates', 'Open System Settings > General > Software Update and install available macOS and security updates.', 'Software Update should confirm that the Mac is up to date.'],
+    ['Turn on FileVault', 'Open System Settings > Privacy & Security > FileVault and enable disk encryption. Store the recovery method safely.', 'FileVault should show as on before important files are stored locally.'],
+    ['Use a standard account every day', 'Keep administrator access for setup and maintenance, and use a separate everyday account.', 'Routine work should not require an administrator password.'],
+    ['Turn on the firewall and MFA', 'Enable the built-in firewall and two-factor authentication for the Apple Account and other important services.', 'The firewall should be on and account security settings should show two-factor authentication enabled.'],
+  ],
+  Android: [
+    ['Install system and app updates', 'Open Settings > System update and Google Play system update, then update apps through the approved app store.', 'The update screens should show current dates or no update waiting.'],
+    ['Use a strong screen lock', 'Use a long PIN or password and enable biometrics only as a convenience alongside it.', 'Lock the device and confirm it requires the chosen lock before showing data.'],
+    ['Check app safety and permissions', 'Keep Play Protect on, remove apps you do not need and review camera, microphone, location and contacts permissions.', 'Play Protect should report no unresolved issues and sensitive permissions should be intentional.'],
+    ['Protect the account', 'Turn on multi-factor authentication for the Google Account and use the device-finding feature if appropriate.', 'Account security should show MFA enabled and the device should appear in the approved device list.'],
+  ],
+  iPadOS: [
+    ['Install iPadOS updates', 'Open Settings > General > Software Update and install available security updates.', 'Software Update should confirm that the iPad is current.'],
+    ['Use a strong passcode', 'Set a long passcode in Face ID & Passcode or Touch ID & Passcode settings.', 'Lock the iPad and confirm it requires the passcode before showing data.'],
+    ['Review apps and permissions', 'Remove apps you do not need and review access to location, photos, camera, microphone and contacts.', 'Each sensitive permission should have a clear reason and an owner.'],
+    ['Protect the Apple Account', 'Turn on two-factor authentication and keep Find My enabled where the organisation permits it.', 'Account settings should show two-factor authentication and the iPad should be visible to the owner.'],
+  ],
+  ChromeOS: [
+    ['Install ChromeOS updates', 'Open Settings > About ChromeOS and install the latest update.', 'The device should report that ChromeOS is up to date.'],
+    ['Use a strong sign-in', 'Use a strong account password, screen lock and MFA. Do not share the account with another person.', 'Lock the device and confirm it needs the expected sign-in.'],
+    ['Keep Verified Boot and apps tidy', 'Do not disable Verified Boot. Remove extensions and apps that are not needed or approved.', 'The device should start normally without a Verified Boot warning.'],
+    ['Review account recovery', 'Make sure the recovery email, MFA method and device ownership are controlled by the right person or organisation.', 'A second authorised person should know how to recover the account without receiving your password.'],
+  ],
+}
+
+function HardeningSteps({ device }) {
+  const steps = baselineHardening[device.os] || [
+    ['Confirm the operating system', 'Check the exact OS and version in the device settings before applying OS-specific instructions.', 'Record the version and confirm it is still supported by the manufacturer.'],
+    ['Install updates', 'Use the built-in updater and the manufacturer’s official support page. Avoid download links from adverts or unknown sites.', 'The updater should show no important security update waiting.'],
+    ['Turn on encryption and a screen lock', 'Enable the device’s built-in storage encryption and use a strong PIN or password.', 'Lock the device and verify that stored files are not available without the lock.'],
+    ['Separate everyday and administrator access', 'Use a standard account for normal work and reserve administrator access for maintenance.', 'Routine browsing and document work should not need elevated access.'],
+  ]
+  return <section className="guidance-block hardening-block"><h2>Practical hardening steps</h2><p className="small-note">These are safe baseline actions, not a guarantee. Menu names can vary by version. For an unknown OS, confirm the exact model and operating system first.</p><ol className="hardening-steps">{steps.map(([title, action, check]) => <li key={title}><strong>{title}</strong><span>{action}</span><small><b>Check:</b> {check}</small></li>)}</ol></section>
+}
+
 function VendorOffers({ device }) {
   const offers = device.offers || []
   if (!offers.length) return <section className="comparison-box vendor-box"><div className="section-heading"><div><h3>Where to buy</h3><p className="small-note">No approved live vendor price feed is attached to this device yet.</p></div></div><div className="retailer-list">{(device.vendor_links || []).map((vendor) => <a key={vendor.vendor} href={vendor.url} target="_blank" rel="noreferrer noopener">Search {vendor.vendor}</a>)}</div><p className="small-note vendor-warning">These are vendor search links, not verified offers, so they are not ranked by price.</p></section>
-  return <section className="comparison-box vendor-box"><div className="section-heading"><div><h3>Vendor offers</h3><p className="small-note">Observed offers are sorted by total known cost. Verify stock and final price on the retailer site.</p></div><span className="offer-count">{offers.length} checked</span></div><div className="offer-list">{offers.map((offer, index) => <a className="offer-row" key={`${offer.vendor}-${offer.url}`} href={offer.url} target="_blank" rel="noreferrer noopener"><span className="offer-rank">{index + 1}</span><span className="offer-vendor"><strong>{offer.vendor}</strong><small>{offer.availability} · {offerFreshness(offer)}{offer.is_affiliate ? ' · affiliate link' : ''}{offer.is_sponsored ? ' · sponsored' : ''}</small></span><strong className="offer-price">{formatPrice(offer)} <span>↗</span></strong></a>)}</div></section>
+  return <section className="comparison-box vendor-box"><div className="section-heading"><div><h3>Vendor offers</h3><p className="small-note">Observed offers are sorted by total known cost. Verify stock and final price on the retailer site.</p></div><span className="offer-count">{offers.length} checked</span></div>{offers.length === 1 && <p className="small-note vendor-warning">Only one approved or observed vendor offer is available for this device right now, so this is not a full market comparison.</p>}<div className="offer-list">{offers.map((offer, index) => <a className="offer-row" key={`${offer.vendor}-${offer.url}`} href={offer.url} target="_blank" rel="noreferrer noopener"><span className="offer-rank">{index + 1}</span><span className="offer-vendor"><strong>{offer.vendor}</strong><small>{offer.availability} · {offerFreshness(offer)}{offer.is_affiliate ? ' · affiliate link' : ''}{offer.is_sponsored ? ' · sponsored' : ''}</small></span><strong className="offer-price">{formatPrice(offer)} <span>↗</span></strong></a>)}</div></section>
 }
 
 function DeviceImage({ device, variant = 'card' }) {
@@ -107,7 +158,7 @@ function DeviceCard({ device, onSelect }) {
       <div><span className="eyebrow">{device.category}</span><h3>{device.name}</h3></div>
       <span className={`score score-${level.toLowerCase()}`}>{scoreValue(score, '%')}</span>
     </div>
-    <p className="muted">{device.os} · {specValue(device.ram, 'GB RAM', 'RAM not listed')} · {specValue(device.storage, 'GB storage', 'Storage not listed')}</p>
+    <p className="muted">{osLabel(device.os)} · {specValue(device.ram, 'GB RAM', 'RAM not listed')} · {specValue(device.storage, 'GB storage', 'Storage not listed')}</p>
     <p className="plain-score"><strong>{score == null ? 'Security not rated.' : `${level} security baseline.`}</strong> {scoreCopy(level, score)}</p>
     <p className="small-note">{device.catalogue?.source || 'Source unavailable'} · {freshnessLabel(device.catalogue)}</p>
     <div className="card-footer"><strong>{offer ? formatPrice(offer) : 'Price not currently verified'}</strong><button onClick={() => onSelect(device.id)}>Review device</button></div>
@@ -120,7 +171,7 @@ function Metric({ label, value }) {
 
 function DetailTabs({ active, onChange }) {
   return <div className="detail-tabs" role="tablist" aria-label="Device review sections">
-    {[['overview', 'Overview'], ['security', 'Security'], ['performance', 'Performance'], ['vendors', 'Vendors']].map(([id, label]) => <button key={id} role="tab" aria-selected={active === id} className={active === id ? 'active' : ''} onClick={() => onChange(id)}>{label}</button>)}
+    {[['overview', 'Overview'], ['security', 'Security'], ['performance', 'Performance'], ['vendors', 'Vendors']].map(([id, label], index, tabs) => <button key={id} id={`detail-tab-${id}`} role="tab" aria-controls={`detail-panel-${id}`} aria-selected={active === id} tabIndex={active === id ? 0 : -1} className={active === id ? 'active' : ''} onClick={() => onChange(id)} onKeyDown={(event) => { const offset = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : event.key === 'Home' ? -index : event.key === 'End' ? tabs.length - index - 1 : 0; if (!offset) return; event.preventDefault(); const next = tabs[(index + offset + tabs.length) % tabs.length][0]; onChange(next); requestAnimationFrame(() => document.getElementById(`detail-tab-${next}`)?.focus()) }}>{label}</button>)}
   </div>
 }
 
@@ -145,17 +196,17 @@ function DeviceDetail({ device, comparisons, context, detailTab, onTabChange, on
   }
   return <section className="detail-view" aria-labelledby="device-review-heading">
     <div className="back-row"><button className="back-button" onClick={onBack}>← Back to recommendations</button><span className="eyebrow">Device review</span></div>
-    <div className="detail-hero"><DeviceImage device={device} variant="detail" /><div className="detail-title"><div><h1 id="device-review-heading" className={device.name.length > 90 ? 'long-title' : ''}>{device.name}</h1><p className="lead">{device.os} · {device.cpu_vendor} · {device.category}</p><p className="image-note">Retailer product image · verify the exact colour and configuration on the vendor page.</p></div><button className="secondary" onClick={downloadSummary}>Download summary</button></div></div>
+    <div className="detail-hero"><DeviceImage device={device} variant="detail" /><div className="detail-title"><div><h1 id="device-review-heading" className={device.name.length > 90 ? 'long-title' : ''}>{device.name}</h1><p className="lead">{osLabel(device.os)} · {cpuLabel(device.cpu_vendor)} · {device.category}</p><p className="image-note">Retailer product image · verify the exact colour and configuration on the vendor page.</p></div><button className="secondary" onClick={downloadSummary}>Download summary</button></div></div>
     <div className="context-row"><div className="context-pill">Recommendation for: <strong>{context.use_case === 'Work' ? 'Business' : context.use_case}</strong>{context.work_profile && context.use_case === 'Work' ? ` · ${context.work_profile.replaceAll('_', ' ')}` : ''}</div><span className="freshness-note">{catalogue.source || 'Source unavailable'} · {freshnessLabel(catalogue)}</span></div>
     <div className="metric-row"><Metric label="Security score" value={`${scoreValue(security.score, '%')} · ${security.level || 'Unrated'}`} /><Metric label="Lowest observed price" value={currentOffer(device) ? formatPrice(currentOffer(device)) : 'Not observed'} /><Metric label="Memory" value={specValue(device.ram, 'GB', 'Not listed')} /><Metric label="Storage" value={specValue(device.storage, 'GB', 'Not listed')} /></div>
     <DetailTabs active={detailTab} onChange={onTabChange} />
-    <div className="detail-content">
+    <div className="detail-content" id={`detail-panel-${detailTab}`} role="tabpanel" aria-labelledby={`detail-tab-${detailTab}`} tabIndex="0">
       {detailTab === 'overview' && <div className="detail-column overview-column">
         <section className="guidance-block"><h2>What this means</h2><p>{device.experience?.summary || scoreCopy(security.level, security.score)}</p><div className="rating-strip"><span>OS <strong>{scoreValue(security.os_rating)}</strong></span><span>Hardware <strong>{scoreValue(security.hardware_rating)}</strong></span><span>Performance <strong>{scoreValue(benchmark.overall_index)}</strong></span></div><p className="small-note">{device.experience?.os_context || 'Scores are a practical comparison aid, not certification.'}</p></section>
         <section className="comparison-box"><h2>Evidence and limits</h2><p className="small-note">Evidence quality: <strong>{security.evidence_quality || catalogue.evidence_quality || 'unknown'}</strong> · Score version: {security.score_version || 'not supplied'}</p><ul>{(security.limitations || []).slice(0, 3).map((item, index) => <li key={index}>{item}</li>)}</ul><button className="text-button" onClick={() => onTabChange('security')}>See full security evidence →</button></section>
         <section className="comparison-box alternatives"><div className="section-heading"><div><h2>Similar choices</h2><p className="small-note">Compare nearby options with similar price and performance.</p></div><button className="secondary" onClick={onCompare}>Find alternatives</button></div>{comparisons.length ? <div className="mini-grid">{comparisons.map(item => <div className="mini-card" key={item.id}><strong>{item.name}</strong><span>£{item.price} · {scoreValue(item.security?.score, '%')} security</span></div>)}</div> : <p className="small-note">Choose “Find alternatives” to load comparisons.</p>}</section>
       </div>}
-      {detailTab === 'security' && <div className="detail-column"><section className="guidance-block"><h2>Security score breakdown</h2><div className="factor-list">{(security.score_factors || []).map((factor) => <div className="factor-row" key={factor.id}><span><strong>{factor.label}</strong><small>{factor.explanation}</small></span><b className={factor.points < 0 ? 'negative' : ''}>{factor.points > 0 ? '+' : ''}{factor.points}</b></div>)}</div></section><section className="guidance-block"><h2>Do these things first</h2><ul>{(security.recommendations?.settings || []).slice(0, 8).map((item, index) => <li key={index}>{item}</li>)}</ul></section><section className="guidance-block"><h2>Risks to understand</h2>{(security.findings || []).length ? <ul>{security.findings.slice(0, 6).map((item, index) => <li key={index}>{item}</li>)}</ul> : <p>No specific risk was flagged by the current rules. Keep the normal update, encryption and account-safety steps.</p>}</section><section className="comparison-box"><h2>Security evidence</h2>{device.security_evidence?.length ? <ul>{device.security_evidence.slice(0, 8).map((item) => <li key={`${item.provider}-${item.cve_id}-${item.checked_at}`}>{item.cve_id || item.provider}: {item.summary || 'security evidence recorded'} · {item.confidence}</li>)}</ul> : <p className="small-note">No model-specific vulnerability evidence is attached, so no security score is shown.</p>}</section></div>}
+      {detailTab === 'security' && <div className="detail-column"><section className="guidance-block"><h2>Security score breakdown</h2>{security.score == null ? <div className="pending-score"><strong>No responsible score yet</strong><p>This device needs an explicit operating system, model-specific security evidence and a support lifecycle before it can be scored.</p></div> : <div className="factor-list">{(security.score_factors || []).map((factor) => <div className="factor-row" key={factor.id}><span><strong>{factor.label}</strong><small>{factor.explanation}</small></span><b className={factor.points < 0 ? 'negative' : ''}>{factor.points > 0 ? '+' : ''}{factor.points}</b></div>)}</div>}</section><section className="guidance-block"><h2>Do these things first</h2><ul>{(security.recommendations?.settings || []).slice(0, 8).map((item, index) => <li key={index}>{item}</li>)}</ul></section><HardeningSteps device={device} /><section className="guidance-block"><h2>Risks to understand</h2>{(security.findings || []).length ? <ul>{security.findings.slice(0, 6).map((item, index) => <li key={index}>{item}</li>)}</ul> : <p>No specific risk was flagged by the current rules. Keep the normal update, encryption and account-safety steps.</p>}</section><section className="comparison-box"><h2>Security evidence</h2>{device.security_evidence?.length ? <ul>{device.security_evidence.slice(0, 8).map((item) => <li key={`${item.provider}-${item.cve_id}-${item.checked_at}`}>{item.cve_id || item.provider}: {item.summary || 'security evidence recorded'} · {item.confidence}</li>)}</ul> : <p className="small-note">No model-specific vulnerability evidence is attached, so no security score is shown.</p>}</section></div>}
       {detailTab === 'performance' && <div className="detail-column"><section className="comparison-box"><h2>Performance at a glance</h2><div className="benchmark-grid"><Metric label="Overall" value={scoreValue(benchmark.overall_index, '/100')} /><Metric label="CPU" value={scoreValue(benchmark.cpu_index, '/100')} /><Metric label="Memory" value={scoreValue(benchmark.memory_index, '/100')} /><Metric label="Storage" value={scoreValue(benchmark.storage_index, '/100')} /></div><p className="small-note">Evidence state: {device.data_quality?.benchmark_state || 'unknown'}. A performance rating appears only when a sourced benchmark is attached.</p>{device.benchmark_evidence?.length ? <ul>{device.benchmark_evidence.slice(0, 5).map((item) => <li key={`${item.suite}-${item.tested_at}`}>{item.suite} {item.version || ''}: {item.score ?? 'unscored'} · {item.evidence_type}{item.source_url && <> · <a href={item.source_url} target="_blank" rel="noreferrer noopener">source</a></>}</li>)}</ul> : <p className="small-note">No independent benchmark record is attached, so no performance score is shown.</p>}</section><section className="comparison-box"><h2>Improve performance</h2><p className="small-note">{device.experience?.summary || 'Keep the operating system updated and leave enough free storage for updates.'}</p>{device.experience?.strengths?.length ? <ul>{device.experience.strengths.map((item) => <li key={item}>{item}</li>)}</ul> : null}{device.experience?.tradeoffs?.length ? <p className="small-note"><strong>Plan for:</strong> {device.experience.tradeoffs.join(' · ')}</p> : null}{tools.length ? <div className="tool-list">{tools.slice(0, 4).map((tool, index) => <a key={index} href={tool.url} target="_blank" rel="noreferrer noopener"><strong>{tool.name}</strong><span>{tool.description}</span></a>)}</div> : null}</section></div>}
       {detailTab === 'vendors' && <div className="detail-column"><VendorOffers device={device} /><section className="comparison-box"><h2>Support and ownership</h2><p className="small-note">Support until: {catalogue.support_until || 'not supplied'} · Warranty: {catalogue.warranty || 'not supplied'} · Image licence: {catalogue.image_license || 'not supplied'}</p></section></div>}
     </div>
@@ -207,10 +258,16 @@ function App() {
     if (route.view === 'detail' && route.id && (!selected || selected.id !== route.id)) select(route.id)
   }, [route.view, route.id])
   const update = (event) => setFilters({ ...filters, [event.target.name]: event.target.value })
+  const securityCoverage = devices.filter((device) => device.security?.score != null).length
+  const performanceCoverage = devices.filter((device) => device.benchmark?.overall_index != null).length
   const sortedDevices = [...devices].sort((a, b) => { const price = (device) => currentOffer(device)?.total_price ?? currentOffer(device)?.price ?? Number.POSITIVE_INFINITY; return sort === 'price' ? price(a) - price(b) : sort === 'performance' ? descendingRated(a.benchmark?.overall_index, b.benchmark?.overall_index) : descendingRated(a.security?.score, b.security?.score) })
   const select = async (id) => { setError(''); try { const payload = await fetchDevice(id, context); setSelected(payload.item); setComparisons([]); setDetailTab('overview'); navigate('detail', id) } catch (err) { setError(err.message) } }
   const compare = async () => { if (!selected) return; try { const payload = await fetchComparisons(selected.id, { category: 'same', price_range: 'similar', performance: 'similar', ...context }); setComparisons(payload.items || []) } catch (err) { setError(err.message) } }
   const chooseUseCase = (useCase) => setFilters({ ...filters, use_case: useCase })
+  const clearFilters = () => { const next = { ...initialFilters, use_case: filters.use_case, work_profile: filters.work_profile }; setFilters(next); setPriority('security'); setSort('security'); load(next) }
+  const emptyState = ['Work', 'Government'].includes(filters.use_case)
+    ? <><strong>{filters.use_case === 'Government' ? 'No public-sector shortlist is ready yet.' : 'No business shortlist is ready yet.'}</strong><p>The live catalogue does not yet contain enough confirmed OS, support or security evidence for this context. Relaxing filters may show products, but it will not create missing evidence.</p></>
+    : <><strong>No devices matched these choices.</strong><p>Try increasing the budget or removing one filter.</p></>
 
   return <div className="app-shell">
     <header className="app-bar"><a className="brand" href="#browse" onClick={() => navigate('browse')}><span className="brand-mark">✦</span><span><strong>Device Provisioning</strong><small>Toolkit by BStudioB</small></span></a><nav className="primary-nav" aria-label="Primary navigation"><button className={route.view === 'browse' ? 'active' : ''} onClick={() => navigate('browse')}>Browse devices</button><button className={route.view === 'guide' ? 'active' : ''} onClick={() => navigate('guide')}>How scoring works</button></nav><span className="pilot-badge"><span className="pilot-full">Public pilot</span><span className="pilot-short">Pilot</span></span></header>
@@ -232,10 +289,12 @@ function App() {
           <label>Maximum price (£)<input name="price_max" type="number" min="0" max="100000" value={filters.price_max} onChange={update} /></label><label>Minimum RAM (GB)<input name="ram" type="number" min="0" max="128" value={filters.ram} onChange={update} /></label><label>Minimum storage (GB)<input name="storage" type="number" min="0" max="100000" value={filters.storage} onChange={update} /></label></div></details>
         </form></section>
         {error && <div className="notice error" role="alert">{error}</div>}
-        <section className="results"><div className="section-heading"><div><span className="eyebrow">Your shortlist</span><h2>{filters.query ? 'Search results' : 'Current catalogue'}</h2><p className="muted">For {filters.use_case === 'Work' ? 'business' : filters.use_case.toLowerCase()} use · {total} devices found</p></div><div className="result-controls"><span className="catalogue-chip"><i /> {catalogueStateLabel(catalogueStatus)}</span><label>Sort<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="security">Security first</option><option value="performance">Performance first</option><option value="price">Lowest observed price</option></select></label></div></div>
+        <section className="results" aria-labelledby="results-heading"><div className="section-heading"><div><span className="eyebrow">Your shortlist</span><h2 id="results-heading">{filters.query ? 'Search results' : 'Current catalogue'}</h2><p className="muted" role="status" aria-live="polite" aria-atomic="true">For {filters.use_case === 'Work' ? 'business' : filters.use_case.toLowerCase()} use · {total} devices found</p></div><div className="result-controls"><span className="catalogue-chip"><i /> {catalogueStateLabel(catalogueStatus)}</span><label>Sort<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="security">Security first{securityCoverage ? '' : ' (when rated)'}</option><option value="performance">Performance first{performanceCoverage ? '' : ' (when benchmarked)'}</option><option value="price">Lowest observed price</option></select></label></div></div>
+          {!loading && devices.length > 0 && !securityCoverage && sort === 'security' && <p className="sort-note" role="note">No devices in this shortlist have a responsible security rating yet, so the order is unchanged.</p>}
+          {!loading && devices.length > 0 && !performanceCoverage && sort === 'performance' && <p className="sort-note" role="note">No sourced performance benchmarks are attached yet, so the order is unchanged.</p>}
           {catalogueStatus && ['empty', 'unavailable', 'stale'].includes(catalogueStatus.catalogue_state) && <div className="notice warning"><strong>{catalogueStateLabel(catalogueStatus)}.</strong> This interface will not invent prices, benchmark results or product photographs. An approved feed must be loaded before the service can make live recommendations.</div>}
           {catalogueStatus?.catalogue_mode === 'retailer_observation' && catalogueStatus.catalogue_state === 'current' && <div className="notice"><strong>Live retailer observations.</strong> Prices, stock and product details can change; confirm them on the linked retailer page before buying.</div>}
-          {loading ? <div className="notice">Loading the current catalogue…</div> : sortedDevices.length ? <div className="device-grid">{sortedDevices.map(device => <DeviceCard key={device.id} device={device} onSelect={select} />)}</div> : <div className="notice">{['Work', 'Government'].includes(filters.use_case) ? 'No devices have enough confirmed specifications for this context. Try fewer filters or return when more model evidence is available.' : 'No devices matched these choices. Try increasing the budget or removing one filter.'}</div>}
+          {loading ? <div className="notice" role="status" aria-live="polite">Loading the current catalogue…</div> : sortedDevices.length ? <div className="device-grid">{sortedDevices.map(device => <DeviceCard key={device.id} device={device} onSelect={select} />)}</div> : <div className="notice empty-state">{emptyState}<div className="empty-actions"><button className="secondary" onClick={clearFilters}>Clear filters and browse</button></div></div>}
         </section>
       </>}
     </main>

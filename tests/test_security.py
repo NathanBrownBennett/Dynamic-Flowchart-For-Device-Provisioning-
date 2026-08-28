@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 
@@ -327,23 +328,56 @@ class SecurityBoundaryTests(unittest.TestCase):
             'source': 'Operator feed', 'source_url': 'https://provider.example/catalogue',
             'products': [{
                 'name': 'Device', 'brand': 'Brand', 'model': 'Model', 'category': 'Laptops',
-                'source_state': 'verified', 'confidence': 'high',
+                'source_state': 'verified', 'confidence': 'high', 'evidence_quality': 'independent',
             }],
         })
         self.assertEqual(products[0]['source_state'], 'reviewed')
         self.assertEqual(products[0]['confidence'], 'medium')
+        self.assertEqual(products[0]['evidence_quality'], 'reviewed')
+        future = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+        with self.assertRaisesRegex(ValueError, 'future'):
+            app_module.validate_catalogue_feed({
+                'source': 'Future feed', 'retrieved_at': future,
+                'products': [{'name': 'Device', 'brand': 'Brand', 'model': 'Model', 'category': 'Laptops'}],
+            })
+        with self.assertRaisesRegex(ValueError, 'freshness window'):
+            app_module.validate_catalogue_feed({
+                'source': 'Bad window feed', 'retrieved_at': app_module._utc_now(),
+                'products': [{
+                    'name': 'Device', 'brand': 'Brand', 'model': 'Model', 'category': 'Laptops',
+                    'price_checked_at': '2026-08-25T00:00:00+00:00',
+                    'expires_at': '2026-08-24T00:00:00+00:00',
+                }],
+            })
         client = self.app.test_client()
         injected = client.post('/generate-hardening-script', data={
             'os': 'Windows 11\nWrite-Output injected', 'tasks': ['enforce_firewall'],
             'device_id': '1\r\nunsafe.txt',
         })
         self.assertEqual(injected.status_code, 400)
+        normalized_bypass = client.post('/generate-hardening-script', data={
+            'os': 'Windows 11', 'tasks': ['enforce firewall!!!'], 'device_id': '12',
+        })
+        self.assertEqual(normalized_bypass.status_code, 400)
+        padded_os = client.post('/generate-hardening-script', data={
+            'os': ' Windows 11 ', 'tasks': ['enforce_firewall'], 'device_id': '12',
+        })
+        self.assertEqual(padded_os.status_code, 400)
+        duplicate = client.post('/generate-hardening-script', data={
+            'os': 'Windows 11', 'tasks': ['enforce_firewall', 'enforce_firewall'], 'device_id': '12',
+        })
+        self.assertEqual(duplicate.status_code, 400)
         valid = client.post('/generate-hardening-script', data={
             'os': 'Windows 11', 'tasks': ['enforce_firewall'], 'device_id': '12',
         })
         self.assertEqual(valid.status_code, 200)
         self.assertIn('filename=hardening_device_12.ps1', valid.headers['Content-Disposition'])
         self.assertNotIn('injected', valid.text)
+        unsafe_filename = client.post('/generate-hardening-script', data={
+            'os': 'Windows 11', 'tasks': ['enforce_firewall'], 'device_id': '١٢',
+        })
+        self.assertEqual(unsafe_filename.status_code, 200)
+        self.assertIn('filename=hardening_device_unknown.ps1', unsafe_filename.headers['Content-Disposition'])
         evidence = [{'cve_id': 'CVE-TEST-1', 'fixed_version': '2.0', 'source_url': 'https://security.example/cve'}]
         support = {'support_until': '2030-01-01'}
         low_spec = {'cpu_speed': 1.0, 'ram': 4, 'storage': 64}
@@ -355,6 +389,103 @@ class SecurityBoundaryTests(unittest.TestCase):
             high_spec, 'Windows 11', 'Intel', 'Personal', evidence, support
         )[0]
         self.assertEqual(low_score, high_score)
+
+    def test_live_security_score_requires_explicit_matching_operating_system(self):
+        import app as app_module
+        device = {
+            'id': 901, 'name': 'Example Windows 11 Laptop', 'category': 'Laptops',
+            'cpu_speed': 3.2, 'ram': 16, 'storage': 512, 'screen_size': 14,
+            'price': 900, 'source_state': 'reviewed',
+        }
+        evidence = {901: [{
+            'provider': 'Example security source', 'cve_id': 'CVE-2026-0001',
+            'source_url': 'https://security.example/CVE-2026-0001',
+            'checked_at': app_module._utc_now(),
+        }]}
+        support = {901: {
+            'operating_system': 'Windows 11', 'support_until': '2030-01-01',
+            'source_url': 'https://support.example/windows-11',
+            'checked_at': app_module._utc_now(),
+        }}
+        inferred_only = app_module.apply_rule_engine(
+            [device], 'Personal', security_evidence_by_id=evidence, support_by_id=support,
+        )[0]
+        self.assertIsNone(inferred_only['security']['score'])
+        self.assertFalse(inferred_only['evidence_completeness']['explicit_operating_system'])
+
+        explicit = dict(device, operating_system='Windows 11')
+        rated = app_module.apply_rule_engine(
+            [explicit], 'Personal', security_evidence_by_id=evidence, support_by_id=support,
+        )[0]
+        self.assertIsNotNone(rated['security']['score'])
+        self.assertTrue(rated['evidence_completeness']['explicit_operating_system'])
+
+        mismatched_support = dict(support)
+        mismatched_support[901] = dict(support[901], operating_system='Linux')
+        mismatch = app_module.apply_rule_engine(
+            [explicit], 'Personal', security_evidence_by_id=evidence, support_by_id=mismatched_support,
+        )[0]
+        self.assertIsNone(mismatch['security']['score'])
+
+        unattributed = {901: [dict(evidence[901][0], source_url=None)]}
+        missing_attribution = app_module.apply_rule_engine(
+            [explicit], 'Personal', security_evidence_by_id=unattributed, support_by_id=support,
+        )[0]
+        self.assertIsNone(missing_attribution['security']['score'])
+
+    def test_operator_evidence_requires_attribution_and_loses_high_trust(self):
+        import app as app_module
+        checked_at = app_module._utc_now()
+        product = {
+            'name': 'Evidence Laptop', 'brand': 'Evidence', 'model': 'Laptop',
+            'category': 'Laptops', 'operating_system': 'Windows 11',
+            'benchmarks': [{
+                'suite': 'Example suite', 'score': 80, 'evidence_type': 'measured',
+                'source_url': 'https://benchmarks.example/results/1',
+                'tested_at': checked_at, 'confidence': 'high',
+            }],
+            'security_evidence': [{
+                'provider': 'Example security source', 'cve_id': 'CVE-2026-0001',
+                'source_url': 'https://security.example/CVE-2026-0001',
+                'checked_at': checked_at, 'confidence': 'high',
+            }],
+            'support_lifecycle': {
+                'operating_system': 'Windows 11', 'support_until': '2030-01-01T00:00:00+00:00',
+                'source_url': 'https://support.example/windows-11',
+                'checked_at': checked_at, 'confidence': 'high',
+            },
+        }
+        products, _, _, _ = app_module.validate_catalogue_feed({
+            'source': 'Operator evidence feed', 'retrieved_at': checked_at, 'products': [product],
+        })
+        self.assertEqual(products[0]['benchmarks'][0]['confidence'], 'medium')
+        self.assertEqual(products[0]['security_evidence'][0]['confidence'], 'medium')
+        self.assertEqual(products[0]['support_lifecycle']['confidence'], 'medium')
+
+        missing_source = dict(product)
+        missing_source['security_evidence'] = [dict(product['security_evidence'][0], source_url=None)]
+        with self.assertRaisesRegex(ValueError, 'security source_url'):
+            app_module.validate_catalogue_feed({
+                'source': 'Unattributed evidence feed', 'retrieved_at': checked_at,
+                'products': [missing_source],
+            })
+
+    def test_catalogue_bulk_loads_only_the_selected_sql_page(self):
+        import app as app_module
+        filters = app_module._api_filters({'page': 1, 'page_size': 2})
+        with patch('app._catalogue_metadata_map', return_value={}) as metadata, \
+                patch('app._vendor_offers_map', return_value={}) as offers, \
+                patch('app._evidence_map', return_value={}) as evidence, \
+                patch('app._support_map', return_value={}) as support:
+            items, total = app_module._api_catalogue(filters)
+        self.assertGreater(total, 2)
+        self.assertEqual(len(items), 2)
+        selected_ids = [item['id'] for item in items]
+        metadata.assert_called_once_with(selected_ids)
+        offers.assert_called_once_with(selected_ids)
+        self.assertEqual(evidence.call_count, 2)
+        self.assertTrue(all(call.args[1] == selected_ids for call in evidence.call_args_list))
+        support.assert_called_once_with(selected_ids)
 
     def test_legacy_detail_redirects_without_rendering_graphviz(self):
         with patch('app.create_flowchart') as flowchart:
@@ -378,9 +509,16 @@ class SecurityBoundaryTests(unittest.TestCase):
                 'product_url': f'https://www.johnlewis.com/brand-laptop-{number}/p{number}',
             } for number in range(1, 5)]
             self.assertEqual(app_module.refresh_retailer_observation_catalogue(observations)['status'], 'completed')
-            partial = app_module.refresh_retailer_observation_catalogue(observations[:1])
+            before = [item['name'] for item in app_module.app.test_client().get('/api/v1/devices').json['items']]
+            with patch('app.replace_catalogue', wraps=app_module.replace_catalogue) as replace:
+                partial = app_module.refresh_retailer_observation_catalogue(observations[:1])
             self.assertEqual(partial['status'], 'partial_results')
             self.assertEqual(app_module.app.test_client().get('/api/v1/catalogue/status').json['product_count'], 4)
+            self.assertEqual(
+                [item['name'] for item in app_module.app.test_client().get('/api/v1/devices').json['items']],
+                before,
+            )
+            replace.assert_not_called()
         finally:
             app_module.app.config.update(**original)
             os.unlink(database.name)

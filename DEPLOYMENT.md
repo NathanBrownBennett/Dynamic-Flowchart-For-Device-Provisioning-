@@ -97,6 +97,19 @@ not put secrets in the repository. Generate a long random
 approved. Leave it unset in public/demo environments: refresh and validation
 routes then return `503` by design.
 
+The provider settings are intentionally split into two groups:
+
+- Safe configuration: `SERPAPI_AMAZON_SEARCH_TERM`, `SERPAPI_RESULT_LIMIT`,
+  `EBAY_SEARCH_TERM`, `EBAY_RESULT_LIMIT`, `OSV_PACKAGE_NAME`,
+  `OSV_ECOSYSTEM` and `OSV_PACKAGE_VERSION`.
+- Secret/approval-gated configuration: `SERPAPI_API_KEY`, `EBAY_CLIENT_ID`,
+  `EBAY_CLIENT_SECRET` and any Amazon PA API credentials.
+
+Do not enable `PROVIDER_SYNC_ENABLED` until the provider account, terms,
+permitted fields, image use, retention period, refresh budget and attribution
+have been approved. A provider job creates a review draft first; it does not
+automatically replace the hosted catalogue.
+
 ## Before a hosted pilot
 
 1. Confirm BStudioB ownership of the repository, deployment account and data.

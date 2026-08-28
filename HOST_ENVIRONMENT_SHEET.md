@@ -42,6 +42,16 @@ must not be exposed to browser code or a public deployment.
 - `CATALOGUE_FEED_SOURCE`
 - `CATALOGUE_FEED_SOURCE_URL`
 - `CATALOGUE_REFRESH_SCHEDULE`
+- `SERPAPI_API_KEY`
+- `SERPAPI_AMAZON_SEARCH_TERM`
+- `SERPAPI_RESULT_LIMIT`
+- `EBAY_CLIENT_ID`
+- `EBAY_CLIENT_SECRET`
+- `EBAY_SEARCH_TERM`
+- `EBAY_RESULT_LIMIT`
+- `OSV_PACKAGE_NAME`
+- `OSV_ECOSYSTEM`
+- `OSV_PACKAGE_VERSION`
 
 The staging host may enable the bounded retailer-observation collector. It uses
 fixed HTTPS search pages, no redirects, byte and time limits, a small fixed
