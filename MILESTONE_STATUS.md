@@ -351,3 +351,27 @@ Verification: Python tests 31/31, Python compilation, frontend contract tests
 The host URL and automatic sync remain unset. Publishing a catalogue tab makes
 that tab public and requires owner approval; no Google Sheet, sharing change or
 host environment change was made by this implementation.
+
+## Safe staging completion pass (2026-09-01)
+
+Completed and verified:
+
+- Render staging environment now explicitly sets `ENABLE_LIVE_SCRAPING=false`
+  and `LIVE_DATA_REQUIRED=true`. Existing masked variables were preserved and
+  no credentials were read or changed.
+- The resulting Render rebuild is live on commit `7639897`. The public status
+  endpoint reports `live_scraping=false`, `live_data_required=true`, Google
+  Sheets sync `succeeded`, 24 products and 24 current observed offers.
+- The public quality profile remains correctly `release_ready=false`: there
+  are no valid benchmark, model-linked security or support-lifecycle records,
+  and no product currently has two current vendors. The UI displays these
+  evidence gaps rather than inventing ratings.
+- Updated `README.md` to distinguish local/historical walkthrough claims from
+  current hosted evidence coverage and to remove unsupported production-latency
+  and retailer-authorisation claims.
+
+Render displays Auto-Deploy as `On Commit`, but the repository push did not
+automatically create a deployment in this verification pass; the latest
+revision was deployed through the Render dashboard. GitHub/Render webhook and
+repository permission repair remains an operations task if unattended deploys
+are required.

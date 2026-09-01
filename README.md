@@ -11,10 +11,10 @@ This application simplifies the provisioning of devices to employees or end-user
 - **Form Results**: Displays devices matching the user's search criteria.
 - **Security Recommendations**: Provides guidelines to ensure devices are secure and up-to-date.
 - **Educational Resources**: Links to modules on digital literacy and cybersecurity.
-- **Hardware Benchmarks**: Normalized 0-100 scores for CPU, RAM, Storage, and Security
-- **Multi-Vendor Purchase Links**: Direct retailer links (Amazon, Currys, JohnLewis, Apple, Microsoft)
+- **Evidence-gated benchmarks**: CPU, memory and storage scores appear only when a sourced benchmark record exists
+- **Observed purchase links**: Offers are labelled with source and freshness; affiliate attribution is not claimed until partner terms are approved
 - **Debloat & Performance Tools**: OS-aware recommendations (13+ tools across 6 operating systems)
-- **Security Scoring Engine**: 0-100 security assessment with threat detection and mitigation strategies
+- **Evidence-gated security assessment**: Model-linked OS, security evidence and support lifecycle records are required before a security score appears
 - **Advanced Search**: 13+ filter criteria for precise device discovery
 - **Responsive Design**: Bootstrap 5 UI with dark/light mode support
 - **Online catalogue architecture**: Searchable reviewed products with a path to permitted provider feeds
@@ -83,17 +83,22 @@ frontend automatically, but is not required.
 ### Walkthrough Contents:
 1. **Introduction** - Overview of key features
 2. **Home Page** - Use case selection, recommended devices
-3. **Recommended Devices** - Featured devices with benchmarks (46-68/100) and multi-vendor buttons
+3. **Recommended Devices** - Reviewed devices ranked for the selected use case, with evidence coverage visible
 4. **Search & Filtering** - 13+ filter options and advanced search
 5. **Device Detail Page** - Full specifications, security info, benchmarks
 6. **Security Guide** - OS-specific hardening, software recommendations, threat mitigation
 7. **Debloat Tools** - 13+ performance optimization tools (Windows, macOS, Linux, Android, etc.)
-8. **Purchase Tab** - Multi-vendor links with pricing from authorized retailers
+8. **Purchase Tab** - Source-labelled offers with freshness and verification caveats
 9. **Technology Features** - Benchmark formula, security engine, database optimization
 10. **Quality Assurance** - Test results (7/7 E2E tests passing)
 11. **Summary** - Key achievements and next steps
 
-### Live Demo Recording (Verified with Playwright)
+### Local demo recording (historical verification)
+
+The walkthrough and recording script are development aids. They do not prove
+that the hosted catalogue has complete evidence or that a live retailer
+integration is approved. Treat the hosted `/api/v1/catalogue/status` response
+as the source of truth for current coverage.
 ```
 🎬 Playwright Recording Script
 ============================
@@ -105,7 +110,7 @@ frontend automatically, but is not required.
 
 📍 Step 2: Verifying device selection...
    ✓ Multiple device cards with specifications
-   ✓ Security badges and benchmark scores displayed
+   ✓ Evidence badges displayed; scores are withheld when source records are incomplete
 
 📍 Step 3: Viewing search functionality...
    ✓ Search form opened
@@ -119,20 +124,21 @@ frontend automatically, but is not required.
    ✓ Brand filtering supported
 
 ==================================================
-📊 APP FUNCTIONALITY SUMMARY (VERIFIED)
+📊 APP FUNCTIONALITY SUMMARY (LOCAL/UI)
 ==================================================
 ✅ Home page with recommended devices
-✅ Multi-vendor purchase links
+✅ Source-labelled purchase observations where available
 ✅ Device detail page with 4 tabs (Overview, Security Guide, Compare, Purchase)
 ✅ Security Guide with OS-specific recommendations
 ✅ Purchase options with retailer buttons
 ✅ Advanced search functionality (13+ criteria)
 ✅ Device filtering and sorting by use-case
-✅ Real-time device security assessment
-✅ Hardware benchmark calculations
+✅ Evidence-gated device security assessment
+✅ Evidence-gated hardware benchmark presentation
 ✅ Debloat tool recommendations per device
 
-🎉 All Features Verified & Operational!
+⚠️ Benchmark, security and support scores depend on sourced catalogue records
+⚠️ Multi-vendor and affiliate coverage remains incomplete
 ```
 
 ### How to Run the Live App:
@@ -230,7 +236,7 @@ Additionally, you must have `graphviz` and `ipywidgets` installed if you plan to
 ## Usage
 
 - On the web interface, select the use case (Personal, Business, Government)
-- Browse **Secure Recommended Devices** carousel with benchmarks and multi-vendor purchase links
+- Browse recommended devices with evidence coverage and plain-English caveats
 - Use **Find Your Device** to search with 13+ filter criteria:
   - Device name, brand, or model
   - Price range
@@ -239,11 +245,11 @@ Additionally, you must have `graphviz` and `ipywidgets` installed if you plan to
   - CPU speed, RAM, storage specifications
 - View detailed device information including:
   - Performance specifications
-  - Security badges and threat assessment
-  - Hardware benchmarks (0-100 scores)
+  - Security evidence and threat assessment where sourced
+  - Hardware benchmarks (0-100 scores only when sourced)
   - Security guidance and hardening steps
   - Debloat & performance optimization tools
-  - Multi-vendor purchase options
+  - Source-labelled purchase options
 - Generate downloadable security checklists and hardening scripts
 
 **Quick Start Video**: Watch the interactive walkthrough in `VIDEO_WALKTHROUGH.html` for guided tour.
@@ -261,9 +267,9 @@ Additionally, you must have `graphviz` and `ipywidgets` installed if you plan to
 ## Technical Architecture
 
 ### Backend (Python + Flask)
-- **Security Rule Engine**: OS inference, vulnerability detection, security scoring (0-100)
-- **Benchmark Metrics**: Normalized hardware scoring (CPU, RAM, Storage, Security blend)
-- **Retailer Links Generation**: Dynamic multi-vendor URL creation per device
+- **Security evidence pipeline**: OS inference plus model-linked vulnerability, support and security evidence; scores are withheld when evidence is missing
+- **Benchmark metrics**: Normalized hardware scoring only from validated benchmark records
+- **Offer presentation**: Bounded, source-labelled catalogue offers; no claim of retailer authorisation or affiliate commission
 - **Debloat Tools Database**: 13+ OS-aware performance optimization recommendations
 - **Provider boundary**: Live retailer access is disabled by default pending permitted feeds/APIs
 - **Database**: SQLite3 with indexed queries for fast device search
@@ -292,17 +298,14 @@ def detect_known_vulnerabilities(os, cpu_vendor, device_name)
   # Find Spectre/Meltdown, OEM bloatware, fragmentation risks
   
 def compute_security_score(device, os, cpu_vendor, use_case)
-  # 0-100 score based on hardware, OS baseline, CPU vendor, use-case
+  # Evidence-gated 0-100 score; withheld without model-linked evidence and support lifecycle
 ```
 
 #### Hardware Benchmarks
 ```python
 def compute_benchmark_metrics(device, security_score)
-  # Normalized 0-100 scores:
-  # CPU Index: Speed normalized to 5.0 GHz max
-  # Memory Index: RAM normalized to 64GB max
-  # Storage Index: Storage normalized to 2TB max
-  # Overall: (CPU × 35%) + (RAM × 25%) + (Storage × 15%) + (Security × 25%)
+  # Normalized 0-100 scores from validated benchmark records only.
+  # Missing or unsupported records remain explicitly unavailable.
 ```
 
 #### Debloat Tools
@@ -315,25 +318,21 @@ def get_debloat_tools(os_name, device_name)
   #          Dell SupportAssist, Lenovo Vantage (Vendor-specific)
 ```
 
-#### Multi-Vendor Links
+#### Offer presentation
 ```python
-def get_retailer_links(device_name, category)
-  # Dynamic URL generation for:
-  # - Amazon: Search URL based on device name
-  # - Currys: Search query with filters
-  # - JohnLewis: Search term matching
-  # - Apple Store: Brand-specific (Apple devices only)
-  # - Microsoft Store: Brand-specific (Surface/Microsoft devices only)
+def get_catalogue_offers(device_id)
+  # Return bounded, source-labelled observations with retrieval and freshness data.
+  # Approved feeds/APIs and affiliate attribution remain deployment gates.
 ```
 
 ## Features Implemented
 
 ### ✅ Completed Features
-- [x] Hardware benchmark computation with security weighting (4-factor normalization)
+- [x] Evidence coverage reporting and score withholding for incomplete benchmark/security data
 - [x] OS-aware debloat tool recommendations (13+ tools across 6 OSes)
-- [x] Multi-vendor retailer links (Amazon, Currys, JohnLewis, Apple, Microsoft)
+- [x] Source-labelled retailer observations with explicit freshness and provenance caveats
 - [x] Device search with 13+ filter criteria
-- [x] Security guidance generation per device
+- [x] Plain-English security and hardening guidance with evidence-gated ratings
 - [x] Use-case specific recommendations (Personal, Business, Government, Education)
 - [x] Responsive UI with Bootstrap 5
 - [x] Dark/Light mode toggle
@@ -343,10 +342,12 @@ def get_retailer_links(device_name, category)
 - [x] Interactive video walkthrough (11 slides)
 
 ### 📊 Content Database
-- **10+ Device Models**: MacBook Air M2, Dell XPS 13 Plus, Lenovo ThinkPad X1, etc.
+- **24 reviewed product records** in the current staging catalogue
+- **24 current observed offers**, currently one observed source per product rather than a complete multi-vendor comparison
+- **No published benchmark, model-linked security or support-lifecycle coverage yet**; the UI reports these evidence gaps and keeps affected ratings withheld
 - **6 Device Categories**: Laptops, Tablets, PCs, and more
 - **13+ Debloat Tools**: Cross-platform optimization recommendations
-- **3 Major Retailers**: Plus platform-specific stores
+- **Retailer coverage**: Current observations are not a substitute for approved retailer feeds or affiliate APIs
 - **4 Use Cases**: Personal, Business, Government, Education
 - **6 Operating Systems**: Windows 11, macOS, Linux, Android, iPadOS, ChromeOS
 
@@ -403,19 +404,19 @@ node record-demo.js
 
 # Verifies all major features:
 ✓ Home page with recommended devices
-✓ Multi-vendor purchase links
+✓ Source-labelled purchase observations
 ✓ Device detail pages with 4 tabs
 ✓ Security guidance content
-✓ Purchase options and retailers
+✓ Purchase options and retailer provenance
 ✓ Advanced search functionality
 ✓ Device filtering and sorting
 ```
 
 ### Performance Metrics
-- **Database Queries**: Sub-second response times with indexed SQLite
-- **API Endpoints**: All endpoints respond in < 500ms
-- **Page Load**: Homepage loads in < 3 seconds
-- **Search**: Filter results in real-time (< 100ms)
+Performance targets are not production guarantees. Measure them again on the
+selected host with a representative catalogue and load profile before making
+latency or capacity claims. The current hosted free tier can sleep between
+requests, and SQLite remains pilot-grade storage.
 
 ## Should Have
 
