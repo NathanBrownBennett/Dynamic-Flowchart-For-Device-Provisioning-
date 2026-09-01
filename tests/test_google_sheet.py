@@ -60,5 +60,10 @@ Secure Laptop,Example,Secure Laptop,Laptops,3.2,16,512,14,799,Windows 11,reviewe
         with self.assertRaises(ValueError):
             csv_to_feed('name,brand,model\nA,B,C\n', 'Source', 'https://docs.google.com/spreadsheets/d/id/export')
 
+    def test_empty_optional_support_lifecycle_is_absent_not_invalid(self):
+        csv_text = 'name,brand,model,category,source_url\nLaptop,Example,Model,Laptops,https://vendor.example/product\n'
+        feed = csv_to_feed(csv_text, 'Source', 'https://docs.google.com/spreadsheets/d/id/export')
+        self.assertIsNone(feed['products'][0]['support_lifecycle'])
+
 if __name__ == '__main__':
     unittest.main()

@@ -177,7 +177,7 @@ def csv_to_feed(csv_text, source, source_url, retrieved_at=None,
             'source_state': _cell(row, 'source_state') or 'reviewed',
         }
         for column, target in JSON_COLUMNS.items():
-            product[target] = _json_cell(row, column, {} if target == 'support_lifecycle' else [])
+            product[target] = _json_cell(row, column, None if target == 'support_lifecycle' else [])
         products.append(product)
     if not products:
         raise ValueError('Google Sheet contains no catalogue rows')
