@@ -65,5 +65,13 @@ Secure Laptop,Example,Secure Laptop,Laptops,3.2,16,512,14,799,Windows 11,reviewe
         feed = csv_to_feed(csv_text, 'Source', 'https://docs.google.com/spreadsheets/d/id/export')
         self.assertIsNone(feed['products'][0]['support_lifecycle'])
 
+        explicit_empty = csv_text.replace(
+            'source_url\n', 'source_url,support_lifecycle_json\n'
+        ).replace(
+            'https://vendor.example/product\n', 'https://vendor.example/product,{}\n'
+        )
+        feed = csv_to_feed(explicit_empty, 'Source', 'https://docs.google.com/spreadsheets/d/id/export')
+        self.assertIsNone(feed['products'][0]['support_lifecycle'])
+
 if __name__ == '__main__':
     unittest.main()

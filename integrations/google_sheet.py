@@ -108,6 +108,8 @@ def _json_cell(row, key, default):
     if key == 'support_lifecycle_json':
         if not isinstance(parsed, dict):
             raise ValueError(f'Google Sheet column {key} must contain a JSON object')
+        if not parsed:
+            return None
         return parsed
     if not isinstance(parsed, list):
         raise ValueError(f'Google Sheet column {key} must contain a JSON array')
