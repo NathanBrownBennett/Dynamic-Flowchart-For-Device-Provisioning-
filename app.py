@@ -23,6 +23,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from integrations.providers import provider_descriptors
 from integrations.worker import run_provider
 from integrations.google_sheet import GoogleSheetNotConfigured, fetch_catalogue_feed
+from integrations.quality import profile_catalogue_connection
 
 app = Flask(__name__)
 
@@ -1296,6 +1297,7 @@ def api_catalogue_status():
     source_state_rows = conn.execute(
         'SELECT source_state, COUNT(*) FROM device_catalogue_metadata GROUP BY source_state ORDER BY source_state'
     ).fetchall()
+    quality_profile = profile_catalogue_connection(conn)
     conn.close()
     visible_product_count = product_count if app.config['ALLOW_SAMPLE_DATA'] else max(0, product_count - sample_count)
     return jsonify({
@@ -1313,6 +1315,13 @@ def api_catalogue_status():
         'benchmark_coverage': benchmark_count,
         'security_evidence_coverage': security_count,
         'identity_coverage': identity_count,
+        'data_quality': {
+            'schema_state': quality_profile.get('schema_state'),
+            'release_ready': quality_profile.get('release_ready', False),
+            'counts': quality_profile.get('counts', {}),
+            'gates': quality_profile.get('gates', {}),
+            'issues': quality_profile.get('issues', []),
+        },
         'providers': provider_descriptors(),
         'google_sheet_sync': _google_sheet_status(),
         'sources': [{'source': row[0], 'source_url': row[1], 'retrieved_at': row[2],

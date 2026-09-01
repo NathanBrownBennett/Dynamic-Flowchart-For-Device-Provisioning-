@@ -6,14 +6,14 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /healthz
-    autoDeploy: false
+    autoDeploy: true
     envVars:
       - key: FLASK_DEBUG
         value: "false"
       - key: SERVE_FRONTEND_AT_ROOT
         value: "true"
       - key: ENABLE_LIVE_SCRAPING
-        value: "true"
+        value: "false"
       - key: ALLOW_SAMPLE_DATA
         value: "false"
       - key: LIVE_DATA_REQUIRED

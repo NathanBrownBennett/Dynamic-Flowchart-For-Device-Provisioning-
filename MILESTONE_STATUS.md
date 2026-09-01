@@ -137,6 +137,31 @@ following external decisions:
 No DNS, hosting account, provider integration, credential, payment, legal
 acceptance or public deployment has been made by this work.
 
+## Data-backed comparison and deployment alignment (2026-09-01)
+
+- Added a read-only `data_quality` summary to
+  `/api/v1/catalogue/status`, including release gates, coverage counts and
+  blocking issues. The React browse view now shows the same evidence coverage
+  in plain English.
+- The live catalogue was checked after the Render instance cold-started: it
+  returned 24 products, 24 current observed offers and 24 images, but one
+  vendor per product, 0/24 model-linked security records and 0/24 sourced
+  benchmark records. Security and performance ratings remain withheld.
+- Added `CATALOGUE_DATA_QUALITY.md` with the exact release gates and the
+  operator enrichment path for offers, benchmarks, security evidence and
+  support lifecycle records. No fabricated scores, prices or evidence were
+  added.
+- The Render blueprint now declares `autoDeploy: true` and
+  `ENABLE_LIVE_SCRAPING: "false"`. The existing Render dashboard already
+  displayed Auto-Deploy as `On Commit`; no credential, DNS, payment or manual
+  deployment action was required for that setting. The live service still
+  needs a successful deployment of the current repository head to prove the
+  blueprint and latest frontend are running.
+- Local verification for this pass: backend tests 33/33, frontend contract
+  tests 3/3, Vite production build passed, Python compilation passed and
+  `git diff --check` passed. The root-level `npm test` command is not defined;
+  the correct command is `cd frontend && npm test`.
+
 ## Full-completion implementation pass (2026-08-26)
 
 Implemented locally:

@@ -154,6 +154,30 @@ function catalogueStateLabel(status) {
   return labels[status?.catalogue_state] || 'Evidence status loading'
 }
 
+function coverageText(value, total) {
+  if (!total) return '0 of 0'
+  return `${value || 0} of ${total}`
+}
+
+function DataQualityPanel({ status }) {
+  const quality = status?.data_quality
+  const counts = quality?.counts
+  if (!counts) return null
+  const metrics = [
+    ['Current offers', coverageText(counts.products_with_current_offer, counts.products)],
+    ['Two or more vendors', coverageText(counts.products_with_two_current_vendors, counts.products)],
+    ['Security evidence', coverageText(counts.products_with_valid_security_evidence, counts.products)],
+    ['Benchmarks', coverageText(counts.products_with_valid_benchmark, counts.products)],
+    ['Support lifecycle', coverageText(counts.products_with_valid_support, counts.products)],
+  ]
+  return <section className="coverage-panel" aria-labelledby="coverage-heading">
+    <div className="coverage-heading"><div><span className="eyebrow">Data quality</span><h2 id="coverage-heading">What the comparison can prove today</h2></div><strong className={quality.release_ready ? 'coverage-ready' : 'coverage-pending'}>{quality.release_ready ? 'Evidence gates passed' : 'Evidence gaps visible'}</strong></div>
+    <p className="small-note">The catalogue contains {counts.products} product records. A device is only numerically rated when the matching evidence is attached; missing evidence is not treated as a zero.</p>
+    <div className="coverage-grid">{metrics.map(([label, value]) => <div className="coverage-metric" key={label}><strong>{value}</strong><span>{label}</span></div>)}</div>
+    {!quality.release_ready && quality.issues?.length ? <ul className="coverage-issues">{quality.issues.slice(0, 3).map((issue) => <li key={issue}>{issue}</li>)}</ul> : null}
+  </section>
+}
+
 function offerFreshness(offer) {
   if (!offer.checked_at) return 'No check date'
   if (offer.expires_at && new Date(offer.expires_at) < new Date()) return 'Price may be stale'
@@ -379,6 +403,7 @@ function App() {
       {route.view === 'detail' && !selected && <div className="notice">Loading this device review…</div>}
       {route.view === 'browse' && <>
         <section className="browse-intro"><div><span className="eyebrow">Safer device decisions</span><h1>Find a device that fits.</h1><p>Compare devices for home, business or public-sector use. See the security trade-offs and practical steps in plain English.</p><div className="intro-actions"><a className="secondary" href="#about">Why this tool was created <span>→</span></a><span className="intro-note">Built from evidence-led provisioning research.</span></div></div><div className="status-panel"><strong>{catalogueStateLabel(catalogueStatus)}</strong><span>{catalogueStatus?.product_count ?? '—'} products · {catalogueStatus?.current_offer_count ?? 0} observed offers</span><small>Prices and evidence are labelled by freshness.</small><button className="quiet refresh-button" onClick={refreshCatalogue} disabled={loading}>↻ {loading ? 'Refreshing…' : 'Refresh catalogue'}</button></div></section>
+        <DataQualityPanel status={catalogueStatus} />
         <section className="context-strip" aria-label="Choose your situation"><span className="context-label">I’m choosing for</span><div className="context-options"><button className={filters.use_case === 'Personal' ? 'selected' : ''} onClick={() => chooseUseCase('Personal')}>Home & personal</button><button className={filters.use_case === 'Work' ? 'selected' : ''} onClick={() => chooseUseCase('Work')}>Small business</button><button className={filters.use_case === 'Government' ? 'selected' : ''} onClick={() => chooseUseCase('Government')}>Public sector</button></div><button className="guide-link" onClick={() => navigate('guide')}>How it works →</button></section>
         <section className="search-panel"><div className="panel-heading"><div><span className="eyebrow">Find a shortlist</span><h2>Tell us what you need</h2></div><span className="step-label">1 of 2</span></div><form onSubmit={(event) => { event.preventDefault(); load() }}>
           <div className="quick-fields"><label>What matters most?<select value={priority} onChange={(event) => { setPriority(event.target.value); setSort(event.target.value) }}><option value="security">Security baseline</option><option value="performance">Performance</option><option value="price">Lower price</option></select></label>

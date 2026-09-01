@@ -85,6 +85,9 @@ class SecurityBoundaryTests(unittest.TestCase):
         self.assertGreaterEqual(status.json['product_count'], 1)
         self.assertFalse(status.json['live_scraping'])
         self.assertIn('google_sheet_sync', status.json)
+        self.assertIn('data_quality', status.json)
+        self.assertIn('release_ready', status.json['data_quality'])
+        self.assertIn('counts', status.json['data_quality'])
 
         source_status = client.get('/api/v1/sources/Local%20development%20fixture/status')
         self.assertEqual(source_status.status_code, 200)
