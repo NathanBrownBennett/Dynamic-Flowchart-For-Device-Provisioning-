@@ -9,10 +9,10 @@ from integrations.google_sheet import (
 
 
 class FakeResponse:
-    def __init__(self, payload, status_code=200):
+    def __init__(self, payload, status_code=200, headers=None):
         self.payload = payload
         self.status_code = status_code
-        self.headers = {'Content-Length': str(len(payload))}
+        self.headers = {'Content-Length': str(len(payload)), **(headers or {})}
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -53,6 +53,21 @@ Secure Laptop,Example,Secure Laptop,Laptops,3.2,16,512,14,799,Windows 11,reviewe
         with patch('integrations.google_sheet.requests.get', return_value=FakeResponse(b'x' * 65537)):
             with self.assertRaises(ValueError):
                 fetch_public_csv('https://docs.google.com/spreadsheets/d/id/export?format=csv', max_bytes=65536)
+
+    def test_fetch_allows_one_google_export_redirect_only(self):
+        redirect = FakeResponse(b'', status_code=307, headers={
+            'Location': 'https://doc-1-sheets.googleusercontent.com/export-token'
+        })
+        content = FakeResponse(b'name,brand,model,category\nLaptop,Example,Model,Laptops\n')
+        with patch('integrations.google_sheet.requests.get', side_effect=[redirect, content]) as get:
+            result = fetch_public_csv('https://docs.google.com/spreadsheets/d/id/export?format=csv')
+        self.assertIn('Laptop', result)
+        self.assertEqual(get.call_count, 2)
+
+        with patch('integrations.google_sheet.requests.get', return_value=FakeResponse(
+                b'', status_code=307, headers={'Location': 'https://example.invalid/feed'})):
+            with self.assertRaises(ValueError):
+                fetch_public_csv('https://docs.google.com/spreadsheets/d/id/export?format=csv')
 
     def test_csv_rejects_duplicate_headers_and_missing_required_columns(self):
         with self.assertRaises(ValueError):

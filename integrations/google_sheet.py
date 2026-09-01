@@ -10,7 +10,7 @@ import io
 import json
 import os
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -50,6 +50,21 @@ def _sheet_export_url(value, allowed_hosts=None):
     return parsed
 
 
+def _allowed_redirect_url(value, allowed_hosts):
+    """Allow one HTTPS redirect to Google's export host, never an open redirect."""
+    parsed = urlparse(str(value or '').strip())
+    hostname = (parsed.hostname or '').lower().rstrip('.')
+    allowed = allowed_hosts or _allowed_hosts()
+    google_export_redirect = (
+        'docs.google.com' in allowed and hostname.endswith('.googleusercontent.com')
+    )
+    if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or
+            parsed.password or parsed.fragment or
+            (hostname not in allowed and not google_export_redirect)):
+        raise ValueError('Google Sheet export redirect is not allowlisted')
+    return parsed
+
+
 def fetch_public_csv(url, max_bytes=DEFAULT_MAX_BYTES, allowed_hosts=None):
     """Fetch bounded CSV bytes without following redirects."""
     parsed = _sheet_export_url(url, allowed_hosts)
@@ -57,29 +72,38 @@ def fetch_public_csv(url, max_bytes=DEFAULT_MAX_BYTES, allowed_hosts=None):
         limit = max(64 * 1024, min(int(max_bytes), 10 * 1024 * 1024))
     except (TypeError, ValueError) as exc:
         raise GoogleSheetNotConfigured('Google Sheet size limit is invalid') from exc
-    response = requests.get(
-        parsed.geturl(),
-        headers={'User-Agent': 'BStudioB-Device-Provisioning-Toolkit/1.0'},
-        timeout=(3, 15), allow_redirects=False, stream=True,
-    )
-    try:
-        if 300 <= response.status_code < 400:
-            raise ValueError('Google Sheet export must not redirect')
-        response.raise_for_status()
-        content_length = response.headers.get('Content-Length')
-        if content_length and int(content_length) > limit:
-            raise ValueError('Google Sheet export is too large')
-        body = bytearray()
-        for chunk in response.iter_content(chunk_size=64 * 1024):
-            body.extend(chunk)
-            if len(body) > limit:
-                raise ValueError('Google Sheet export is too large')
+    current_url = parsed.geturl()
+    for redirect_count in range(2):
+        response = requests.get(
+            current_url,
+            headers={'User-Agent': 'BStudioB-Device-Provisioning-Toolkit/1.0'},
+            timeout=(3, 15), allow_redirects=False, stream=True,
+        )
         try:
-            return bytes(body).decode('utf-8-sig')
-        except UnicodeDecodeError as exc:
-            raise ValueError('Google Sheet export must be UTF-8 CSV') from exc
-    finally:
-        response.close()
+            if 300 <= response.status_code < 400:
+                if redirect_count:
+                    raise ValueError('Google Sheet export has too many redirects')
+                location = response.headers.get('Location')
+                current_url = _allowed_redirect_url(
+                    urljoin(current_url, location), allowed_hosts
+                ).geturl()
+                continue
+            response.raise_for_status()
+            content_length = response.headers.get('Content-Length')
+            if content_length and int(content_length) > limit:
+                raise ValueError('Google Sheet export is too large')
+            body = bytearray()
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                body.extend(chunk)
+                if len(body) > limit:
+                    raise ValueError('Google Sheet export is too large')
+            try:
+                return bytes(body).decode('utf-8-sig')
+            except UnicodeDecodeError as exc:
+                raise ValueError('Google Sheet export must be UTF-8 CSV') from exc
+        finally:
+            response.close()
+    raise ValueError('Google Sheet export did not return CSV')
 
 
 def _cell(row, key):
