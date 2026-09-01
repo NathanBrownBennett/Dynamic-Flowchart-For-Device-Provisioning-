@@ -101,9 +101,18 @@ The provider settings are intentionally split into two groups:
 
 - Safe configuration: `SERPAPI_AMAZON_SEARCH_TERM`, `SERPAPI_RESULT_LIMIT`,
   `EBAY_SEARCH_TERM`, `EBAY_RESULT_LIMIT`, `OSV_PACKAGE_NAME`,
-  `OSV_ECOSYSTEM` and `OSV_PACKAGE_VERSION`.
+  `OSV_ECOSYSTEM`, `OSV_PACKAGE_VERSION`, `GOOGLE_SHEETS_SOURCE_NAME`,
+  `GOOGLE_SHEETS_ALLOWED_HOSTS`, `GOOGLE_SHEETS_MAX_BYTES`,
+  `GOOGLE_SHEETS_MAX_ROWS` and `GOOGLE_SHEETS_SYNC_TTL_MINUTES`.
 - Secret/approval-gated configuration: `SERPAPI_API_KEY`, `EBAY_CLIENT_ID`,
-  `EBAY_CLIENT_SECRET` and any Amazon PA API credentials.
+  `EBAY_CLIENT_SECRET`, any Amazon PA API credentials and the decision to set
+  `GOOGLE_SHEETS_CSV_URL`/`GOOGLE_SHEETS_AUTO_SYNC=true`.
+
+The optional free Google Sheets catalogue path is documented in
+[`GOOGLE_SHEETS_CATALOGUE.md`](GOOGLE_SHEETS_CATALOGUE.md). It uses a public,
+non-personal CSV export and no Google API credential; it is a reviewed source
+cache, not durable production storage. Do not enable it until publication of
+the exact catalogue tab and its contents has been approved.
 
 Do not enable `PROVIDER_SYNC_ENABLED` until the provider account, terms,
 permitted fields, image use, retention period, refresh budget and attribution

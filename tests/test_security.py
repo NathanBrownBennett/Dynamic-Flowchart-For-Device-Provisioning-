@@ -30,7 +30,8 @@ class SecurityBoundaryTests(unittest.TestCase):
 
     def test_operator_routes_require_bearer_token(self):
         client = self.app.test_client()
-        for route in ('/async-refresh', '/refresh-devices', '/validate-links'):
+        for route in ('/async-refresh', '/refresh-devices', '/validate-links',
+                      '/admin/catalogue/sync-google-sheet'):
             response = client.post(route, json={'device_name': 'test'})
             self.assertEqual(response.status_code, 401, route)
         response = client.post('/generate-hardening-script', data={'tasks': ['unknown']})
@@ -83,6 +84,7 @@ class SecurityBoundaryTests(unittest.TestCase):
         self.assertEqual(status.status_code, 200)
         self.assertGreaterEqual(status.json['product_count'], 1)
         self.assertFalse(status.json['live_scraping'])
+        self.assertIn('google_sheet_sync', status.json)
 
         source_status = client.get('/api/v1/sources/Local%20development%20fixture/status')
         self.assertEqual(source_status.status_code, 200)

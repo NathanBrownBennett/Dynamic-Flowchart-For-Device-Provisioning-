@@ -22,6 +22,7 @@ from urllib.parse import quote, urlparse
 from werkzeug.middleware.proxy_fix import ProxyFix
 from integrations.providers import provider_descriptors
 from integrations.worker import run_provider
+from integrations.google_sheet import GoogleSheetNotConfigured, fetch_catalogue_feed
 
 app = Flask(__name__)
 
@@ -40,6 +41,13 @@ app.config.update(
     ALLOW_SAMPLE_DATA=_env_bool('ALLOW_SAMPLE_DATA'),
     LIVE_DATA_REQUIRED=_env_bool('LIVE_DATA_REQUIRED'),
     PROVIDER_SYNC_ENABLED=_env_bool('PROVIDER_SYNC_ENABLED'),
+    GOOGLE_SHEETS_AUTO_SYNC=_env_bool('GOOGLE_SHEETS_AUTO_SYNC'),
+    GOOGLE_SHEETS_CSV_URL=os.environ.get('GOOGLE_SHEETS_CSV_URL', ''),
+    GOOGLE_SHEETS_SOURCE_NAME=os.environ.get('GOOGLE_SHEETS_SOURCE_NAME', 'BStudioB reviewed catalogue'),
+    GOOGLE_SHEETS_ALLOWED_HOSTS=os.environ.get('GOOGLE_SHEETS_ALLOWED_HOSTS', 'docs.google.com'),
+    GOOGLE_SHEETS_MAX_BYTES=max(65536, min(int(os.environ.get('GOOGLE_SHEETS_MAX_BYTES', '5242880')), 10485760)),
+    GOOGLE_SHEETS_MAX_ROWS=max(1, min(int(os.environ.get('GOOGLE_SHEETS_MAX_ROWS', '500')), 5000)),
+    GOOGLE_SHEETS_SYNC_TTL_MINUTES=max(15, min(int(os.environ.get('GOOGLE_SHEETS_SYNC_TTL_MINUTES', '360')), 1440)),
     CATALOGUE_TTL_HOURS=max(1, min(int(os.environ.get('CATALOGUE_TTL_HOURS', '168')), 744)),
     OFFER_TTL_HOURS=max(1, min(int(os.environ.get('OFFER_TTL_HOURS', '48')), 168)),
     RETAILER_SEARCH_TERMS=os.environ.get('RETAILER_SEARCH_TERMS', 'laptop,tablet,desktop computer'),
@@ -67,6 +75,9 @@ RATE_LIMIT_LOCK = threading.Lock()
 RATE_LIMIT_LAST_SWEEP = 0.0
 RETAILER_REFRESH_LOCK = threading.Lock()
 RETAILER_REFRESH_THREAD = None
+GOOGLE_SHEET_SYNC_LOCK = threading.Lock()
+GOOGLE_SHEET_SYNC_LAST_ATTEMPT = 0.0
+GOOGLE_SHEET_SYNC_STATE = {'status': 'not_configured'}
 SCORE_VERSION = 'v3-evidence-gated-readiness'
 DEFAULT_IMAGE_PROXY_HOSTS = (
     'm.media-amazon.com,images-na.ssl-images-amazon.com,'
@@ -1267,6 +1278,7 @@ def api_healthz():
 @app.route('/api/v1/catalogue/status', methods=['GET'])
 @public_rate_limited
 def api_catalogue_status():
+    _sync_google_sheet_catalogue()
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
     rows = conn.execute('''SELECT source, MIN(source_url), MAX(retrieved_at),
                           MAX(price_checked_at), COUNT(*)
@@ -1302,6 +1314,7 @@ def api_catalogue_status():
         'security_evidence_coverage': security_count,
         'identity_coverage': identity_count,
         'providers': provider_descriptors(),
+        'google_sheet_sync': _google_sheet_status(),
         'sources': [{'source': row[0], 'source_url': row[1], 'retrieved_at': row[2],
                      'price_checked_at': row[3], 'product_count': row[4]} for row in rows],
     })
@@ -1335,6 +1348,7 @@ def api_source_status(source):
 @public_rate_limited
 def api_devices():
     try:
+        _sync_google_sheet_catalogue()
         filters = _api_filters(request.args)
         items, total = _api_catalogue(filters)
         return jsonify({'items': items, 'page': filters['page'], 'page_size': filters['page_size'], 'total': total, 'live_scraping': False})
@@ -1345,6 +1359,7 @@ def api_devices():
 @app.route('/api/v1/devices/<int:device_id>', methods=['GET'])
 @public_rate_limited
 def api_device(device_id):
+    _sync_google_sheet_catalogue()
     use_case = _normalise_use_case(request.args.get('use_case', 'Personal'))
     work_profile = _normalise_work_profile(request.args.get('work_profile', 'general_office'))
     conn = sqlite3.connect(app.config['DATABASE_PATH'])
@@ -2323,6 +2338,60 @@ def validate_catalogue_feed(payload):
     return normalised, source, source_url, retrieved_at
 
 
+def _google_sheet_status():
+    """Return non-sensitive Sheet sync state for operators and diagnostics."""
+    state = dict(GOOGLE_SHEET_SYNC_STATE)
+    state['enabled'] = bool(app.config.get('GOOGLE_SHEETS_AUTO_SYNC'))
+    state['configured'] = bool(app.config.get('GOOGLE_SHEETS_CSV_URL'))
+    return state
+
+
+def _sync_google_sheet_catalogue(force=False):
+    """Refresh the reviewed catalogue at most once per TTL and fail closed."""
+    global GOOGLE_SHEET_SYNC_LAST_ATTEMPT, GOOGLE_SHEET_SYNC_STATE
+    if not app.config.get('GOOGLE_SHEETS_CSV_URL'):
+        GOOGLE_SHEET_SYNC_STATE = {'status': 'not_configured'}
+        return _google_sheet_status()
+    if not force and not app.config.get('GOOGLE_SHEETS_AUTO_SYNC'):
+        return _google_sheet_status()
+    now = time.monotonic()
+    ttl = app.config['GOOGLE_SHEETS_SYNC_TTL_MINUTES'] * 60
+    if not force and now - GOOGLE_SHEET_SYNC_LAST_ATTEMPT < ttl:
+        return _google_sheet_status()
+    if not GOOGLE_SHEET_SYNC_LOCK.acquire(blocking=False):
+        return _google_sheet_status()
+    try:
+        now = time.monotonic()
+        if not force and now - GOOGLE_SHEET_SYNC_LAST_ATTEMPT < ttl:
+            return _google_sheet_status()
+        GOOGLE_SHEET_SYNC_LAST_ATTEMPT = now
+        try:
+            sheet_url = app.config['GOOGLE_SHEETS_CSV_URL']
+            payload = fetch_catalogue_feed(
+                sheet_url, app.config['GOOGLE_SHEETS_SOURCE_NAME'], sheet_url,
+                max_bytes=app.config['GOOGLE_SHEETS_MAX_BYTES'],
+                max_rows=app.config['GOOGLE_SHEETS_MAX_ROWS'],
+                allowed_hosts=app.config['GOOGLE_SHEETS_ALLOWED_HOSTS'],
+            )
+            products, source, source_url, retrieved_at = validate_catalogue_feed(payload)
+            if any(str(product.get('source_state', '')).lower() in {'sample', 'fixture'}
+                   for product in products):
+                raise ValueError('Google Sheet cannot import sample or fixture records')
+            replace_catalogue(products, source, source_url, retrieved_at)
+            GOOGLE_SHEET_SYNC_STATE = {
+                'status': 'succeeded', 'product_count': len(products),
+                'retrieved_at': retrieved_at,
+            }
+        except (GoogleSheetNotConfigured, OSError, sqlite3.Error, ValueError,
+                requests.RequestException) as exc:
+            # Replacement occurs only after complete validation, so the last
+            # good catalogue remains available after a failed refresh.
+            GOOGLE_SHEET_SYNC_STATE = {'status': 'failed', 'error': type(exc).__name__}
+        return _google_sheet_status()
+    finally:
+        GOOGLE_SHEET_SYNC_LOCK.release()
+
+
 @app.route('/admin/catalogue/import', methods=['POST'])
 @public_rate_limited
 @admin_mutation_required
@@ -2335,6 +2404,16 @@ def import_catalogue_feed():
         return jsonify({'error': str(exc)}), 400
     except Exception:
         return jsonify({'error': 'catalogue import failed'}), 500
+
+
+@app.route('/admin/catalogue/sync-google-sheet', methods=['POST'])
+@public_rate_limited
+@admin_mutation_required
+def sync_google_sheet_catalogue():
+    result = _sync_google_sheet_catalogue(force=True)
+    if result.get('status') == 'succeeded':
+        return jsonify(result), 202
+    return jsonify({'error': 'Google Sheet catalogue sync failed', 'status': result.get('status')}), 502
 
 
 def ensure_database_schema():

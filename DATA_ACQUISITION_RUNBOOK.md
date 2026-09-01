@@ -127,6 +127,21 @@ claim that those sources are currently available.
 The current application remains safe to run without these records: it shows
 the catalogue state and withholds unsupported ratings.
 
+## Optional Google Sheets source
+
+For a free invite-only pilot, a BStudioB-owned Google Sheet can act as the
+review surface. Publish only the non-personal `Catalogue` tab as CSV and set
+the names-only host variables documented in
+[`GOOGLE_SHEETS_CATALOGUE.md`](GOOGLE_SHEETS_CATALOGUE.md). The application
+fetches it only over HTTPS, without redirects, with bounded bytes/rows and a
+six-hour in-process refresh window. It validates the complete feed before
+atomic replacement and preserves the previous catalogue after any failure.
+
+This is not private-sheet integration: a public CSV export is public data. Do
+not put credentials, operator notes, customer information or purchase data in
+the published tab. The source still cannot authorise retailer scraping or
+unlock ratings without the evidence fields and licences described above.
+
 ## Sources for operator review
 
 - NVD data feeds: https://nvd.nist.gov/vuln/Data-Feeds

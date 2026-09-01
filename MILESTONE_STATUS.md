@@ -300,3 +300,23 @@ search terms and result limits have non-secret defaults; API keys, client
 secrets and Amazon credentials remain blank and approval-gated. No host
 environment was changed. `PROVIDER_SYNC_ENABLED` remains false until the
 owner completes provider approval and secret entry in the hosting dashboard.
+
+## Free Google Sheets catalogue path (2026-09-01)
+
+Implemented locally:
+
+- Added a read-only published Google Sheets CSV adapter with exact HTTPS host
+  allowlisting, no redirects, bounded response bytes, row/column/cell limits,
+  UTF-8 CSV parsing and nested offer/evidence JSON columns.
+- Added TTL-limited read-through refresh on public catalogue reads and a
+  bearer-protected `/admin/catalogue/sync-google-sheet` manual refresh route.
+- Feed validation completes before atomic SQLite replacement; failed or empty
+  refreshes preserve the last good catalogue.
+- Added `scripts/sync_google_sheet.py`, a names-only environment contract,
+  `catalogue-google-sheet-template.csv` and `GOOGLE_SHEETS_CATALOGUE.md`.
+
+Verification: Python tests 31/31, Python compilation, frontend contract tests
+3/3, Vite production build, Playwright browser tests 9/9 and `git diff --check`.
+The host URL and automatic sync remain unset. Publishing a catalogue tab makes
+that tab public and requires owner approval; no Google Sheet, sharing change or
+host environment change was made by this implementation.

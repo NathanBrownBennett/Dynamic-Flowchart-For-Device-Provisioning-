@@ -42,6 +42,13 @@ must not be exposed to browser code or a public deployment.
 - `CATALOGUE_FEED_SOURCE`
 - `CATALOGUE_FEED_SOURCE_URL`
 - `CATALOGUE_REFRESH_SCHEDULE`
+- `GOOGLE_SHEETS_AUTO_SYNC`
+- `GOOGLE_SHEETS_CSV_URL`
+- `GOOGLE_SHEETS_SOURCE_NAME`
+- `GOOGLE_SHEETS_ALLOWED_HOSTS`
+- `GOOGLE_SHEETS_MAX_BYTES`
+- `GOOGLE_SHEETS_MAX_ROWS`
+- `GOOGLE_SHEETS_SYNC_TTL_MINUTES`
 - `SERPAPI_API_KEY`
 - `SERPAPI_AMAZON_SEARCH_TERM`
 - `SERPAPI_RESULT_LIMIT`
@@ -59,6 +66,11 @@ query list, and a scheduled cache refresh. These observations are not described
 as authorised retailer feeds and must be shown with a verify-before-purchase
 warning. Credentialled provider adapters remain disabled until separately
 approved.
+
+The optional Google Sheets path uses a public CSV export of one reviewed,
+non-personal catalogue tab. Keep `GOOGLE_SHEETS_AUTO_SYNC=false` until the
+sheet has been reviewed and publishing that exact tab as public catalogue data
+has been approved.
 
 ## Host controls to record separately
 
