@@ -168,6 +168,8 @@ class SecurityBoundaryTests(unittest.TestCase):
             self.assertEqual([offer['price'] for offer in imported['offers']], [1099.0, 1299.0])
             self.assertEqual(imported['security']['score'], None)
             self.assertEqual(imported['security']['rating_state'], 'unrated_insufficient_evidence')
+            self.assertEqual(imported['security']['rating_basis'], 'not_scored')
+            self.assertEqual(imported['benchmark']['rating_basis'], 'not_scored')
             self.assertIn('experience', imported)
             self.assertIn('ratings', imported)
         finally:

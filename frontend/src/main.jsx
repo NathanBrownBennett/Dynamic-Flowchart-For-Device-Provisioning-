@@ -73,6 +73,61 @@ function currentOffer(device) {
   return (device.offers || []).find((offer) => offer.total_price != null || offer.price != null)
 }
 
+function deviceRating(device, key) {
+  const rating = device.ratings?.[key] || {}
+  if (rating.score != null) return rating
+  if (key === 'security') return { score: device.security?.score ?? null, label: device.security?.level || 'Unrated' }
+  if (key === 'performance') return { score: device.benchmark?.overall_index ?? null, label: device.benchmark?.overall_index == null ? 'Unrated' : 'Rated' }
+  return { score: null, label: rating.label || 'Unrated' }
+}
+
+function ratingBasis(device, key) {
+  const completeness = device.evidence_completeness || {}
+  const rating = deviceRating(device, key)
+  if (rating.score != null) {
+    if (key === 'security') return device.security?.rating_basis === 'local_fixture_estimate' ? 'Local test estimate' : 'OS, model evidence and support'
+    if (key === 'performance') return device.benchmark?.rating_basis === 'local_fixture_estimate' ? 'Local test estimate' : 'Sourced benchmark'
+    if (key === 'operating_system' || key === 'hardware') return device.security?.rating_basis === 'local_fixture_estimate' ? 'Local test estimate' : 'Security evidence basis'
+  }
+  if (key === 'security') {
+    if (!completeness.explicit_operating_system) return 'OS not confirmed'
+    if (!completeness.security_evidence) return 'Model security evidence missing'
+    if (!completeness.support_lifecycle) return 'Support lifecycle missing'
+    return 'Evidence not sufficient'
+  }
+  if (key === 'performance') return completeness.benchmark_evidence ? 'Benchmark not scoreable' : 'Sourced benchmark missing'
+  if (key === 'operating_system') return 'Not independently assessed'
+  return 'Not independently assessed'
+}
+
+function AssessmentTile({ label, rating, basis, compact = false }) {
+  const score = rating?.score
+  return <div className={`assessment-tile${compact ? ' assessment-tile-compact' : ''}`}>
+    <span>{label}</span>
+    <strong>{score == null ? 'Unrated' : `${score}/100`}</strong>
+    <small>{score == null ? basis : `${rating.label || 'Rated'} · ${basis}`}</small>
+  </div>
+}
+
+function AssessmentSummary({ device }) {
+  return <section className="assessment-summary" aria-labelledby="assessment-summary-heading">
+    <div className="assessment-heading"><div><span className="eyebrow">Device-specific assessment</span><h2 id="assessment-summary-heading">Ratings and evidence at a glance</h2></div><p>Scores are shown only when this exact device has the evidence needed to support them.</p></div>
+    <div className="assessment-grid">
+      <AssessmentTile label="Security" rating={deviceRating(device, 'security')} basis={ratingBasis(device, 'security')} />
+      <AssessmentTile label="Performance" rating={deviceRating(device, 'performance')} basis={ratingBasis(device, 'performance')} />
+      <AssessmentTile label="Operating system" rating={deviceRating(device, 'operating_system')} basis={ratingBasis(device, 'operating_system')} />
+      <AssessmentTile label="Hardware" rating={deviceRating(device, 'hardware')} basis={ratingBasis(device, 'hardware')} />
+    </div>
+  </section>
+}
+
+function performanceImprovements(device) {
+  const steps = ['Install current operating-system, firmware and vendor driver updates from official sources.', 'Remove unused startup apps and background services, then restart and check whether the slowdown remains.', 'Keep regular backups and leave enough free storage for updates, temporary files and recovery tools.']
+  if (Number(device.ram) > 0 && Number(device.ram) <= 8) steps.push('This device has limited memory headroom: keep browser tabs and heavy apps under control before considering an upgrade or replacement.')
+  if (Number(device.storage) > 0 && Number(device.storage) <= 256) steps.push('Storage is limited: archive large files and avoid filling the drive, because low free space can make updates and everyday work feel slower.')
+  return steps
+}
+
 function specValue(value, unit, unknownLabel) {
   return Number(value) > 0 ? `${value} ${unit}` : unknownLabel
 }
@@ -152,7 +207,14 @@ function DeviceCard({ device, onSelect }) {
   const score = device.security?.score ?? null
   const level = device.security?.level || 'Unrated'
   const offer = currentOffer(device)
-  return <article className="device-card">
+  const openDevice = () => onSelect(device.id)
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      openDevice()
+    }
+  }
+  return <article className="device-card" role="button" tabIndex="0" aria-label={`Review ${device.name}`} onClick={openDevice} onKeyDown={handleKeyDown}>
     <DeviceImage device={device} />
     <div className="device-card-top">
       <div><span className="eyebrow">{device.category}</span><h3>{device.name}</h3></div>
@@ -160,8 +222,12 @@ function DeviceCard({ device, onSelect }) {
     </div>
     <p className="muted">{osLabel(device.os)} · {specValue(device.ram, 'GB RAM', 'RAM not listed')} · {specValue(device.storage, 'GB storage', 'Storage not listed')}</p>
     <p className="plain-score"><strong>{score == null ? 'Security not rated.' : `${level} security baseline.`}</strong> {scoreCopy(level, score)}</p>
+    <div className="card-assessments" aria-label="Device ratings">
+      <AssessmentTile compact label="Security" rating={deviceRating(device, 'security')} basis={ratingBasis(device, 'security')} />
+      <AssessmentTile compact label="Performance" rating={deviceRating(device, 'performance')} basis={ratingBasis(device, 'performance')} />
+    </div>
     <p className="small-note">{device.catalogue?.source || 'Source unavailable'} · {freshnessLabel(device.catalogue)}</p>
-    <div className="card-footer"><strong>{offer ? formatPrice(offer) : 'Price not currently verified'}</strong><button onClick={() => onSelect(device.id)}>Review device</button></div>
+    <div className="card-footer"><strong>{offer ? formatPrice(offer) : 'Price not currently verified'}</strong><button onClick={(event) => { event.stopPropagation(); openDevice() }}>Review device</button></div>
   </article>
 }
 
@@ -198,7 +264,8 @@ function DeviceDetail({ device, comparisons, context, detailTab, onTabChange, on
     <div className="back-row"><button className="back-button" onClick={onBack}>← Back to recommendations</button><span className="eyebrow">Device review</span></div>
     <div className="detail-hero"><DeviceImage device={device} variant="detail" /><div className="detail-title"><div><h1 id="device-review-heading" className={device.name.length > 90 ? 'long-title' : ''}>{device.name}</h1><p className="lead">{osLabel(device.os)} · {cpuLabel(device.cpu_vendor)} · {device.category}</p><p className="image-note">Retailer product image · verify the exact colour and configuration on the vendor page.</p></div><button className="secondary" onClick={downloadSummary}>Download summary</button></div></div>
     <div className="context-row"><div className="context-pill">Recommendation for: <strong>{context.use_case === 'Work' ? 'Business' : context.use_case}</strong>{context.work_profile && context.use_case === 'Work' ? ` · ${context.work_profile.replaceAll('_', ' ')}` : ''}</div><span className="freshness-note">{catalogue.source || 'Source unavailable'} · {freshnessLabel(catalogue)}</span></div>
-    <div className="metric-row"><Metric label="Security score" value={`${scoreValue(security.score, '%')} · ${security.level || 'Unrated'}`} /><Metric label="Lowest observed price" value={currentOffer(device) ? formatPrice(currentOffer(device)) : 'Not observed'} /><Metric label="Memory" value={specValue(device.ram, 'GB', 'Not listed')} /><Metric label="Storage" value={specValue(device.storage, 'GB', 'Not listed')} /></div>
+    <div className="metric-row"><Metric label="Security score" value={`${scoreValue(security.score, '%')} · ${security.level || 'Unrated'}`} /><Metric label="Performance score" value={scoreValue(benchmark.overall_index, '/100')} /><Metric label="Lowest observed price" value={currentOffer(device) ? formatPrice(currentOffer(device)) : 'Not observed'} /><Metric label="Memory" value={specValue(device.ram, 'GB', 'Not listed')} /><Metric label="Storage" value={specValue(device.storage, 'GB', 'Not listed')} /></div>
+    <AssessmentSummary device={device} />
     <DetailTabs active={detailTab} onChange={onTabChange} />
     <div className="detail-content" id={`detail-panel-${detailTab}`} role="tabpanel" aria-labelledby={`detail-tab-${detailTab}`} tabIndex="0">
       {detailTab === 'overview' && <div className="detail-column overview-column">
@@ -206,8 +273,8 @@ function DeviceDetail({ device, comparisons, context, detailTab, onTabChange, on
         <section className="comparison-box"><h2>Evidence and limits</h2><p className="small-note">Evidence quality: <strong>{security.evidence_quality || catalogue.evidence_quality || 'unknown'}</strong> · Score version: {security.score_version || 'not supplied'}</p><ul>{(security.limitations || []).slice(0, 3).map((item, index) => <li key={index}>{item}</li>)}</ul><button className="text-button" onClick={() => onTabChange('security')}>See full security evidence →</button></section>
         <section className="comparison-box alternatives"><div className="section-heading"><div><h2>Similar choices</h2><p className="small-note">Compare nearby options with similar price and performance.</p></div><button className="secondary" onClick={onCompare}>Find alternatives</button></div>{comparisons.length ? <div className="mini-grid">{comparisons.map(item => <div className="mini-card" key={item.id}><strong>{item.name}</strong><span>£{item.price} · {scoreValue(item.security?.score, '%')} security</span></div>)}</div> : <p className="small-note">Choose “Find alternatives” to load comparisons.</p>}</section>
       </div>}
-      {detailTab === 'security' && <div className="detail-column"><section className="guidance-block"><h2>Security score breakdown</h2>{security.score == null ? <div className="pending-score"><strong>No responsible score yet</strong><p>This device needs an explicit operating system, model-specific security evidence and a support lifecycle before it can be scored.</p></div> : <div className="factor-list">{(security.score_factors || []).map((factor) => <div className="factor-row" key={factor.id}><span><strong>{factor.label}</strong><small>{factor.explanation}</small></span><b className={factor.points < 0 ? 'negative' : ''}>{factor.points > 0 ? '+' : ''}{factor.points}</b></div>)}</div>}</section><section className="guidance-block"><h2>Do these things first</h2><ul>{(security.recommendations?.settings || []).slice(0, 8).map((item, index) => <li key={index}>{item}</li>)}</ul></section><HardeningSteps device={device} /><section className="guidance-block"><h2>Risks to understand</h2>{(security.findings || []).length ? <ul>{security.findings.slice(0, 6).map((item, index) => <li key={index}>{item}</li>)}</ul> : <p>No specific risk was flagged by the current rules. Keep the normal update, encryption and account-safety steps.</p>}</section><section className="comparison-box"><h2>Security evidence</h2>{device.security_evidence?.length ? <ul>{device.security_evidence.slice(0, 8).map((item) => <li key={`${item.provider}-${item.cve_id}-${item.checked_at}`}>{item.cve_id || item.provider}: {item.summary || 'security evidence recorded'} · {item.confidence}</li>)}</ul> : <p className="small-note">No model-specific vulnerability evidence is attached, so no security score is shown.</p>}</section></div>}
-      {detailTab === 'performance' && <div className="detail-column"><section className="comparison-box"><h2>Performance at a glance</h2><div className="benchmark-grid"><Metric label="Overall" value={scoreValue(benchmark.overall_index, '/100')} /><Metric label="CPU" value={scoreValue(benchmark.cpu_index, '/100')} /><Metric label="Memory" value={scoreValue(benchmark.memory_index, '/100')} /><Metric label="Storage" value={scoreValue(benchmark.storage_index, '/100')} /></div><p className="small-note">Evidence state: {device.data_quality?.benchmark_state || 'unknown'}. A performance rating appears only when a sourced benchmark is attached.</p>{device.benchmark_evidence?.length ? <ul>{device.benchmark_evidence.slice(0, 5).map((item) => <li key={`${item.suite}-${item.tested_at}`}>{item.suite} {item.version || ''}: {item.score ?? 'unscored'} · {item.evidence_type}{item.source_url && <> · <a href={item.source_url} target="_blank" rel="noreferrer noopener">source</a></>}</li>)}</ul> : <p className="small-note">No independent benchmark record is attached, so no performance score is shown.</p>}</section><section className="comparison-box"><h2>Improve performance</h2><p className="small-note">{device.experience?.summary || 'Keep the operating system updated and leave enough free storage for updates.'}</p>{device.experience?.strengths?.length ? <ul>{device.experience.strengths.map((item) => <li key={item}>{item}</li>)}</ul> : null}{device.experience?.tradeoffs?.length ? <p className="small-note"><strong>Plan for:</strong> {device.experience.tradeoffs.join(' · ')}</p> : null}{tools.length ? <div className="tool-list">{tools.slice(0, 4).map((tool, index) => <a key={index} href={tool.url} target="_blank" rel="noreferrer noopener"><strong>{tool.name}</strong><span>{tool.description}</span></a>)}</div> : null}</section></div>}
+      {detailTab === 'security' && <div className="detail-column"><section className="guidance-block"><h2>Security score breakdown</h2>{security.score == null ? <div className="pending-score"><strong>No responsible score yet</strong><p>This device needs an explicit operating system, model-specific security evidence and a support lifecycle before it can be scored. Its hardware specifications are not a substitute for security evidence.</p><div className="evidence-checklist"><span className={device.evidence_completeness?.explicit_operating_system ? 'complete' : ''}>OS identity {device.evidence_completeness?.explicit_operating_system ? 'confirmed' : 'needed'}</span><span className={device.evidence_completeness?.security_evidence ? 'complete' : ''}>Model evidence {device.evidence_completeness?.security_evidence ? 'attached' : 'needed'}</span><span className={device.evidence_completeness?.support_lifecycle ? 'complete' : ''}>Support lifecycle {device.evidence_completeness?.support_lifecycle ? 'attached' : 'needed'}</span></div></div> : <div className="factor-list">{(security.score_factors || []).map((factor) => <div className="factor-row" key={factor.id}><span><strong>{factor.label}</strong><small>{factor.explanation}</small></span><b className={factor.points < 0 ? 'negative' : ''}>{factor.points > 0 ? '+' : ''}{factor.points}</b></div>)}</div>}</section><section className="guidance-block"><h2>Do these things first</h2><ul>{(security.recommendations?.settings || []).slice(0, 8).map((item, index) => <li key={index}>{item}</li>)}</ul></section><HardeningSteps device={device} /><section className="guidance-block"><h2>Risks to understand</h2>{(security.findings || []).length ? <ul>{security.findings.slice(0, 6).map((item, index) => <li key={index}>{item}</li>)}</ul> : <p>No specific risk was flagged by the current rules. Keep the normal update, encryption and account-safety steps.</p>}</section><section className="comparison-box"><h2>Security evidence</h2>{device.security_evidence?.length ? <ul>{device.security_evidence.slice(0, 8).map((item) => <li key={`${item.provider}-${item.cve_id}-${item.checked_at}`}>{item.cve_id || item.provider}: {item.summary || 'security evidence recorded'} · {item.confidence}</li>)}</ul> : <p className="small-note">No model-specific vulnerability evidence is attached, so no security score is shown.</p>}</section></div>}
+      {detailTab === 'performance' && <div className="detail-column"><section className="comparison-box"><h2>Performance at a glance</h2><div className="benchmark-grid"><Metric label="Overall" value={scoreValue(benchmark.overall_index, '/100')} /><Metric label="CPU" value={scoreValue(benchmark.cpu_index, '/100')} /><Metric label="Memory" value={scoreValue(benchmark.memory_index, '/100')} /><Metric label="Storage" value={scoreValue(benchmark.storage_index, '/100')} /></div><p className="small-note">Evidence state: {device.data_quality?.benchmark_state || 'unknown'}. A performance rating appears only when a sourced benchmark is attached; the known specifications below are not a benchmark.</p>{device.benchmark_evidence?.length ? <ul>{device.benchmark_evidence.slice(0, 5).map((item) => <li key={`${item.suite}-${item.tested_at}`}>{item.suite} {item.version || ''}: {item.score ?? 'unscored'} · {item.evidence_type}{item.source_url && <> · <a href={item.source_url} target="_blank" rel="noreferrer noopener">source</a></>}</li>)}</ul> : <p className="small-note">No independent benchmark record is attached, so no performance score is shown.</p>}<div className="known-specs"><h3>What the known specifications suggest</h3><ul><li>Processor: {cpuLabel(device.cpu_vendor)}{device.cpu_speed ? ` at ${device.cpu_speed} GHz` : ' · speed not listed'}</li><li>Memory: {specValue(device.ram, 'GB', 'not listed')}</li><li>Storage: {specValue(device.storage, 'GB', 'not listed')}</li></ul></div></section><section className="comparison-box"><h2>Improve performance</h2><p className="small-note">These are practical improvements for this device profile, not guaranteed benchmark gains.</p><ol className="improvement-steps">{performanceImprovements(device).map((item, index) => <li key={index}>{item}</li>)}</ol>{device.experience?.strengths?.length ? <ul><li><strong>Likely strengths:</strong> {device.experience.strengths.join(' · ')}</li></ul> : null}{device.experience?.tradeoffs?.length ? <p className="small-note"><strong>Plan for:</strong> {device.experience.tradeoffs.join(' · ')}</p> : null}{tools.length ? <div className="tool-list">{tools.slice(0, 4).map((tool, index) => <a key={index} href={tool.url} target="_blank" rel="noreferrer noopener"><strong>{tool.name}</strong><span>{tool.description}</span></a>)}</div> : null}</section></div>}
       {detailTab === 'vendors' && <div className="detail-column"><VendorOffers device={device} /><section className="comparison-box"><h2>Support and ownership</h2><p className="small-note">Support until: {catalogue.support_until || 'not supplied'} · Warranty: {catalogue.warranty || 'not supplied'} · Image licence: {catalogue.image_license || 'not supplied'}</p></section></div>}
     </div>
   </section>

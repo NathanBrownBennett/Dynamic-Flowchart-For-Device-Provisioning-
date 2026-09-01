@@ -29,6 +29,22 @@ test.describe('Device Provisioning Toolkit - interactive pilot', () => {
     await expect(page.locator('.score').first()).toContainText('%');
   });
 
+  test('a device card opens the full device-specific assessment', async ({ page }) => {
+    await page.goto('/');
+    const card = page.locator('.device-card').first();
+    await expect(card.getByText('Security', { exact: true })).toBeVisible();
+    await expect(card.getByText('Performance', { exact: true })).toBeVisible();
+    await card.click({ position: { x: 20, y: 20 } });
+
+    await expect(page.getByRole('heading', { name: /Ratings and evidence at a glance/i })).toBeVisible();
+    await expect(page.getByText('Device-specific assessment')).toBeVisible();
+    await page.getByRole('tab', { name: /Security/i }).click();
+    await expect(page.getByRole('heading', { name: /Practical hardening steps/i })).toBeVisible();
+    await page.getByRole('tab', { name: /Performance/i }).click();
+    await expect(page.getByRole('heading', { name: /What the known specifications suggest/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Improve performance/i })).toBeVisible();
+  });
+
   test('business role context reaches device review', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: /Small business/i }).click();

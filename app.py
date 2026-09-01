@@ -434,6 +434,7 @@ def compute_security_score(device: dict, os: str, cpu_vendor: str, use_case: str
         return score, _rating_label(score), {
             'factors': factors, 'hardware_rating': score, 'hardware_label': _rating_label(score),
             'os_rating': score, 'os_label': _rating_label(score),
+            'rating_basis': 'local_fixture_estimate',
         }
 
     evidence = security_evidence or []
@@ -483,6 +484,7 @@ def compute_security_score(device: dict, os: str, cpu_vendor: str, use_case: str
         'factors': factors,
         'hardware_rating': None, 'hardware_label': 'Not independently assessed',
         'os_rating': score, 'os_label': level,
+        'rating_basis': 'sourced_security_evidence',
     }
 
 
@@ -572,10 +574,12 @@ def compute_benchmark_metrics(device: dict, benchmark_evidence=None, allow_fixtu
             sourced_scores.append(score)
     if sourced_scores:
         return {'cpu_index': None, 'memory_index': None, 'storage_index': None,
-                'overall_index': int(round(sourced_scores[0])), 'rating_state': 'sourced'}
+                'overall_index': int(round(sourced_scores[0])), 'rating_state': 'sourced',
+                'rating_basis': 'sourced_benchmark'}
     if not allow_fixture_estimate:
         return {'cpu_index': None, 'memory_index': None, 'storage_index': None,
-                'overall_index': None, 'rating_state': 'unrated_no_benchmark'}
+                'overall_index': None, 'rating_state': 'unrated_no_benchmark',
+                'rating_basis': 'not_scored'}
 
     cpu_speed = float(device.get('cpu_speed') or 0)
     ram_gb = int(device.get('ram') or 0)
@@ -595,7 +599,8 @@ def compute_benchmark_metrics(device: dict, benchmark_evidence=None, allow_fixtu
         'cpu_index': cpu_index,
         'memory_index': memory_index,
         'storage_index': storage_index,
-        'overall_index': max(0, min(100, overall)), 'rating_state': 'fixture_estimate'
+        'overall_index': max(0, min(100, overall)), 'rating_state': 'fixture_estimate',
+        'rating_basis': 'local_fixture_estimate'
     }
 
 
@@ -845,6 +850,8 @@ def apply_rule_engine(devices_list: list, use_case: str, work_profile: str = 'ge
             'hardware_label': score_details['hardware_label'],
             'os_rating': score_details['os_rating'],
             'os_label': score_details['os_label'],
+            'rating_basis': ('local_fixture_estimate' if fixture_mode else
+                             score_details.get('rating_basis', 'not_scored')),
             'limitations': [
                 'This is a comparison heuristic, not a certification.',
                 'It does not verify firmware, patch status, vendor support or local policy.',
