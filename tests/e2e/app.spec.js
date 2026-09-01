@@ -18,6 +18,15 @@ test.describe('Device Provisioning Toolkit - interactive pilot', () => {
     await expect(page).toHaveURL(/#browse/);
   });
 
+  test('why DPT page explains the investigation and decision model', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: /Why DPT/i }).click();
+    await expect(page).toHaveURL(/#about/);
+    await expect(page.getByRole('heading', { name: /Buying a device is also a security decision/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /What the investigation found/i })).toBeVisible();
+    await expect(page.locator('img[alt="Device Provisioning Toolkit shield mark"]')).toBeVisible();
+  });
+
   test('domestic search returns reviewed recommendations', async ({ page }) => {
     await page.goto('/');
     await page.getByLabel('What matters most?').selectOption('security');
