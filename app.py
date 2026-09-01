@@ -2386,6 +2386,8 @@ def _sync_google_sheet_catalogue(force=False):
                 requests.RequestException) as exc:
             # Replacement occurs only after complete validation, so the last
             # good catalogue remains available after a failed refresh.
+            app.logger.warning('Google Sheet catalogue sync failed (%s): %s',
+                               type(exc).__name__, str(exc)[:240])
             GOOGLE_SHEET_SYNC_STATE = {'status': 'failed', 'error': type(exc).__name__}
         return _google_sheet_status()
     finally:
