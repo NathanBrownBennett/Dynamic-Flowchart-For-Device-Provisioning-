@@ -152,11 +152,17 @@ acceptance or public deployment has been made by this work.
   support lifecycle records. No fabricated scores, prices or evidence were
   added.
 - The Render blueprint now declares `autoDeploy: true` and
-  `ENABLE_LIVE_SCRAPING: "false"`. The existing Render dashboard already
-  displayed Auto-Deploy as `On Commit`; no credential, DNS, payment or manual
-  deployment action was required for that setting. The live service still
-  needs a successful deployment of the current repository head to prove the
-  blueprint and latest frontend are running.
+  `ENABLE_LIVE_SCRAPING: "false"`. The existing Render dashboard displays
+  Auto-Deploy as `On Commit`. The pushed commit did not appear as an automatic
+  deploy, so the verified head was deployed once using Render's “Deploy latest
+  commit” action; Render reports commit `f9cb79c` live and the hosted browser
+  check shows the new evidence panel and product cards. The auto-deploy
+  webhook/trigger path is therefore configured but not independently proven.
+- The live service currently reports `retailer_observation_enabled: true` and
+  `live_data_required: false`, while the repository blueprint specifies the
+  safer defaults `false` and `true`. Reconcile those existing Render
+  environment values deliberately before widening access; this was not
+  changed through the dashboard in this pass.
 - Local verification for this pass: backend tests 33/33, frontend contract
   tests 3/3, Vite production build passed, Python compilation passed and
   `git diff --check` passed. The root-level `npm test` command is not defined;
